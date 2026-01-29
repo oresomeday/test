@@ -5,17 +5,54 @@
     <title>ゲームメニュー</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 50px; }
-        a { display: block; margin: 20px; font-size: 20px; }
+        .game-link { display: block; margin: 20px; font-size: 20px; text-decoration: none; color: blue; }
+        .locked { display: block; margin: 20px; font-size: 20px; color: gray; }
     </style>
 </head>
 <body>
     <h1>🎮 ゲーム選択メニュー</h1>
-    <p>遊びたいゲームを選んでください</p>
+    <p>順番にクリアしていこう！</p>
 
-    <!-- ここがリンクになります -->
-    <a href="game1.html">① クリックカウンター</a>
-    <a href="game2.html">② おみくじゲーム</a>
-    <a href="game3.html">③ じゃんけんゲーム</a>
+    <!-- ゲーム1は最初から遊べる -->
+    <a href="game1.html" class="game-link">① クリックカウンター（まずはこれ！）</a>
+
+    <!-- ゲーム2：最初はロックされている -->
+    <div id="game2-area">
+        <span class="locked">🔒 ② おみくじ（ゲーム1クリアで解禁）</span>
+    </div>
+
+    <!-- ゲーム3：最初はロックされている -->
+    <div id="game3-area">
+        <span class="locked">🔒 ③ じゃんけん（ゲーム2クリアで解禁）</span>
+    </div>
+
+    <br>
+    <button onclick="resetData()">⚠️ セーブデータを消す</button>
+
+    <script>
+        // ページが開かれたら、セーブデータをチェックする
+        
+        // ★ゲーム1をクリアしているか確認
+        if (localStorage.getItem("clear_game1") === "yes") {
+            // ゲーム2のロックを外してリンクにする
+            document.getElementById("game2-area").innerHTML = 
+                '<a href="game2.html" class="game-link">② おみくじゲーム（解禁！）</a>';
+        }
+
+        // ★ゲーム2をクリアしているか確認
+        if (localStorage.getItem("clear_game2") === "yes") {
+            // ゲーム3のロックを外してリンクにする
+            document.getElementById("game3-area").innerHTML = 
+                '<a href="game3.html" class="game-link">③ じゃんけんゲーム（解禁！）</a>';
+        }
+
+        // データをリセットする機能（テスト用）
+        function resetData() {
+            localStorage.clear();
+            alert("データをリセットしました。ページを更新します。");
+            location.reload();
+        }
+    </script>
 
 </body>
 </html>

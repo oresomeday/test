@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>おみくじ</title>
+    <style>
+        body { text-align: center; padding: 50px; background-color: #fff0f5; }
+        button { font-size: 20px; padding: 10px 20px; }
+        #result { font-size: 40px; color: red; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>② おみくじゲーム</h1>
+    <p>今日の運勢は？</p>
+    
+    <button onclick="drawOmikuji()">おみくじを引く</button>
+    <div id="result">???</div>
+
+    <hr>
+    <!-- 戻るリンク -->
+    <p><a href="index.html">🏠 メニューに戻る</a></p>
+    <p><a href="game3.html">➡️ 次のゲーム（じゃんけん）へ</a></p>
+
+    <script>
+        function drawOmikuji() {
+            const results = ["大吉", "中吉", "小吉", "吉", "凶"];
+            const random = Math.floor(Math.random() * results.length);
+            document.getElementById("result").innerText = results[random];
+        }
+    </script>
+</body>
+</html>

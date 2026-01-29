@@ -7,25 +7,42 @@
         body { text-align: center; padding: 50px; background-color: #f0f8ff; }
         button { font-size: 20px; padding: 10px 20px; }
         #count { font-size: 50px; font-weight: bold; color: blue; }
+        #clear-msg { color: red; font-size: 24px; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
     <h1>① クリックカウンター</h1>
-    <p>ボタンを連打しよう！</p>
+    <p>10回クリックしてクリアを目指せ！</p>
     
     <p>回数: <span id="count">0</span> 回</p>
     <button onclick="countUp()">クリック！</button>
 
+    <!-- クリアしたときに表示されるメッセージ -->
+    <div id="clear-msg">
+        <p>🎉 クリアおめでとう！次のゲームが解禁されたよ！</p>
+        <p><a href="index.html">🏠 メニューに戻って確認する</a></p>
+    </div>
+
     <hr>
-    <!-- ここがメニューに戻るためのリンクです -->
     <p><a href="index.html">🏠 メニューに戻る</a></p>
-    <p><a href="game2.html">➡️ 次のゲーム（おみくじ）へ</a></p>
 
     <script>
         let num = 0;
+        
         function countUp() {
             num++;
             document.getElementById("count").innerText = num;
+
+            // ★ここでクリア判定をします（10回になったら）
+            if (num === 10) {
+                // 1. 画面にメッセージを出す
+                document.getElementById("clear-msg").style.display = "block";
+                
+                // 2. ブラウザに「ゲーム1クリア」という情報を保存する
+                localStorage.setItem("clear_game1", "yes");
+                
+                alert("クリア！メニューに戻ると次のゲームで遊べます。");
+            }
         }
     </script>
 </body>

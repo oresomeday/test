@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>クリックカウンター</title>
+    <style>
+        body { text-align: center; padding: 50px; background-color: #f0f8ff; }
+        button { font-size: 20px; padding: 10px 20px; }
+        #count { font-size: 50px; font-weight: bold; color: blue; }
+    </style>
+</head>
+<body>
+    <h1>① クリックカウンター</h1>
+    <p>ボタンを連打しよう！</p>
+    
+    <p>回数: <span id="count">0</span> 回</p>
+    <button onclick="countUp()">クリック！</button>
+
+    <hr>
+    <!-- ここがメニューに戻るためのリンクです -->
+    <p><a href="index.html">🏠 メニューに戻る</a></p>
+    <p><a href="game2.html">➡️ 次のゲーム（おみくじ）へ</a></p>
+
+    <script>
+        let num = 0;
+        function countUp() {
+            num++;
+            document.getElementById("count").innerText = num;
+        }
+    </script>
+</body>
+</html>

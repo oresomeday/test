@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>じゃんけん</title>
+    <style>
+        body { text-align: center; padding: 50px; background-color: #f0fff0; }
+        button { font-size: 20px; margin: 10px; padding: 10px; }
+        #message { font-size: 30px; margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>③ じゃんけんゲーム</h1>
+    <p>手を選んでください</p>
+    
+    <button onclick="play('グー')">✊ グー</button>
+    <button onclick="play('チョキ')">✌️ チョキ</button>
+    <button onclick="play('パー')">✋ パー</button>
+
+    <div id="message">勝負！</div>
+
+    <hr>
+    <!-- 戻るリンク -->
+    <p><a href="index.html">🏠 メニューに戻る</a></p>
+    <p><a href="game1.html">🔄 最初のゲームに戻る</a></p>
+
+    <script>
+        function play(userHand) {
+            const hands = ["グー", "チョキ", "パー"];
+            const computerHand = hands[Math.floor(Math.random() * 3)];
+            let result = "";
+
+            if (userHand === computerHand) {
+                result = "あいこ！";
+            } else if (
+                (userHand === "グー" && computerHand === "チョキ") ||
+                (userHand === "チョキ" && computerHand === "パー") ||
+                (userHand === "パー" && computerHand === "グー")
+            ) {
+                result = "あなたの勝ち！";
+            } else {
+                result = "あなたの負け...";
+            }
+
+            document.getElementById("message").innerText = 
+                `あなた: ${userHand} vs 相手: ${computerHand} \n 結果: ${result}`;
+        }
+    </script>
+</body>
+</html>

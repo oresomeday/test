@@ -2,39 +2,31 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>IWBTG ENGINE</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
+html, body { 
+    width: 100%; 
+    height: 100%; 
     background: #000; 
-    overflow: hidden; 
-    display: flex; 
-    flex-direction: column;
-    height: 100vh; 
-    height: 100dvh;
-    width: 100vw; 
-    touch-action: none; 
-}
-#gameContainer {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     overflow: hidden;
+    touch-action: none;
 }
-canvas#game { 
-    display: block;
+#gameCanvas {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0a0a1a;
 }
-#touchControls {
+#touchArea {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #1a1a2e;
     display: none;
-    width: 100%;
-    flex-shrink: 0;
-    background: #0f0f1a;
-}
-#touchCanvas { 
-    display: block;
-    width: 100%;
 }
 #optionsOverlay {
     display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -45,215 +37,163 @@ canvas#game {
 .key-row { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 10px; background: #222; border-radius: 5px; }
 .key-row label { color: #aaa; }
 .key-btn { background: #444; color: #fff; border: 2px solid #666; padding: 10px 20px; min-width: 120px; cursor: pointer; font-family: monospace; font-size: 14px; border-radius: 5px; }
-.key-btn:hover { background: #555; border-color: #888; }
-.key-btn.listening { background: #ff4444; border-color: #ff6666; animation: pulse 0.5s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+.key-btn.listening { background: #ff4444; }
 .options-btn { background: #0088ff; color: #fff; border: none; padding: 15px 30px; margin: 10px; cursor: pointer; font-family: monospace; font-size: 16px; border-radius: 5px; }
-.options-btn:hover { background: #00aaff; }
 .options-btn.reset { background: #ff4444; }
-.options-btn.reset:hover { background: #ff6666; }
 #optionsButtons { text-align: center; margin-top: 30px; }
-.section-title { color: #ffcc00; margin: 30px 0 15px 0; padding-bottom: 5px; border-bottom: 1px solid #444; }
+.section-title { color: #ffcc00; margin: 30px 0 15px 0; border-bottom: 1px solid #444; }
 </style>
 </head>
 <body>
-<div id="gameContainer"><canvas id="game"></canvas></div>
-<div id="touchControls"><canvas id="touchCanvas"></canvas></div>
+<canvas id="gameCanvas"></canvas>
+<canvas id="touchArea"></canvas>
 <div id="optionsOverlay">
     <div id="optionsContent">
-        <h2>⚙ KEY CONFIGURATION ⚙</h2>
+        <h2>⚙ KEY CONFIG ⚙</h2>
         <div class="section-title">MOVEMENT</div>
-        <div class="key-row"><label>Move Left</label><button class="key-btn" data-action="left">ArrowLeft</button></div>
-        <div class="key-row"><label>Move Right</label><button class="key-btn" data-action="right">ArrowRight</button></div>
+        <div class="key-row"><label>Left</label><button class="key-btn" data-action="left">←</button></div>
+        <div class="key-row"><label>Right</label><button class="key-btn" data-action="right">→</button></div>
         <div class="section-title">ACTIONS</div>
         <div class="key-row"><label>Jump</label><button class="key-btn" data-action="jump">Space</button></div>
-        <div class="key-row"><label>Jump (Alt 1)</label><button class="key-btn" data-action="jump2">KeyZ</button></div>
-        <div class="key-row"><label>Jump (Alt 2)</label><button class="key-btn" data-action="jump3">ArrowUp</button></div>
-        <div class="key-row"><label>Dash</label><button class="key-btn" data-action="dash">KeyX</button></div>
-        <div class="key-row"><label>Dash (Alt)</label><button class="key-btn" data-action="dash2">ShiftLeft</button></div>
+        <div class="key-row"><label>Jump Alt</label><button class="key-btn" data-action="jump2">Z</button></div>
+        <div class="key-row"><label>Dash</label><button class="key-btn" data-action="dash">X</button></div>
         <div class="section-title">SYSTEM</div>
-        <div class="key-row"><label>Restart Stage</label><button class="key-btn" data-action="restart">KeyR</button></div>
-        <div class="key-row"><label>Confirm / Start</label><button class="key-btn" data-action="confirm">Enter</button></div>
+        <div class="key-row"><label>Restart</label><button class="key-btn" data-action="restart">R</button></div>
         <div id="optionsButtons">
-            <button class="options-btn reset" onclick="resetKeyBindings()">Reset to Default</button>
-            <button class="options-btn" onclick="closeOptions()">Save & Close</button>
+            <button class="options-btn reset" onclick="resetKeys()">Reset</button>
+            <button class="options-btn" onclick="closeOptions()">Save</button>
         </div>
     </div>
 </div>
 
 <script>
-const canvas = document.getElementById('game');
+// キャンバス設定
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const touchCanvas = document.getElementById('touchCanvas');
+const touchCanvas = document.getElementById('touchArea');
 const touchCtx = touchCanvas.getContext('2d');
-const touchControls = document.getElementById('touchControls');
-const gameContainer = document.getElementById('gameContainer');
-const optionsOverlay = document.getElementById('optionsOverlay');
-const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
-const gameWidth = 800;
-const gameHeight = 600;
+// ゲーム論理サイズ
+const GW = 800;
+const GH = 600;
 
-let renderScale = 1;
+// タッチ判定
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ('ontouchstart' in window);
+
+// 画面サイズ変数
+let scale = 1;
 let touchH = 0;
-let screenW = 0;
+let canvasTop = 0;
 
-function resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
-    screenW = window.innerWidth;
-    const screenH = window.innerHeight;
-    const gameRatio = gameWidth / gameHeight;
+function resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     
-    let availableH = screenH;
-    touchH = 0;
-    
-    if (isTouchDevice) {
-        touchH = Math.min(150, Math.floor(screenH * 0.2));
-        availableH = screenH - touchH;
-        touchControls.style.display = 'block';
-        touchControls.style.height = touchH + 'px';
+    if (isMobile) {
+        // スマホ: 下部にタッチエリア
+        touchH = Math.floor(h * 0.2);
+        if (touchH < 100) touchH = 100;
+        if (touchH > 160) touchH = 160;
         
-        touchCanvas.width = Math.floor(screenW * dpr);
-        touchCanvas.height = Math.floor(touchH * dpr);
-        touchCanvas.style.width = screenW + 'px';
+        const gameH = h - touchH;
+        scale = Math.min(w / GW, gameH / GH);
+        
+        canvas.width = GW;
+        canvas.height = GH;
+        canvas.style.width = (GW * scale) + 'px';
+        canvas.style.height = (GH * scale) + 'px';
+        canvas.style.top = ((gameH - GH * scale) / 2) + 'px';
+        
+        canvasTop = (gameH - GH * scale) / 2;
+        
+        touchCanvas.width = w;
+        touchCanvas.height = touchH;
+        touchCanvas.style.display = 'block';
         touchCanvas.style.height = touchH + 'px';
-        touchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
-        updateTouchConfig();
+        updateTouchLayout();
     } else {
-        touchControls.style.display = 'none';
+        // PC: 全画面
+        touchH = 0;
+        scale = Math.min(w / GW, h / GH);
+        
+        canvas.width = GW;
+        canvas.height = GH;
+        canvas.style.width = (GW * scale) + 'px';
+        canvas.style.height = (GH * scale) + 'px';
+        canvas.style.top = ((h - GH * scale) / 2) + 'px';
+        
+        touchCanvas.style.display = 'none';
     }
-    
-    let displayW, displayH;
-    if (screenW / availableH > gameRatio) {
-        displayH = availableH;
-        displayW = Math.floor(availableH * gameRatio);
-    } else {
-        displayW = screenW;
-        displayH = Math.floor(screenW / gameRatio);
-    }
-    
-    canvas.width = Math.floor(displayW * dpr);
-    canvas.height = Math.floor(displayH * dpr);
-    canvas.style.width = displayW + 'px';
-    canvas.style.height = displayH + 'px';
-    
-    renderScale = canvas.width / gameWidth;
-    
-    gameContainer.style.height = availableH + 'px';
 }
 
-function updateTouchConfig() {
-    const scale = touchH / 150;
-    stickConfig.baseRadius = 50 * scale;
-    stickConfig.stickRadius = 28 * scale;
-    stickConfig.maxDist = 40 * scale;
-    stickConfig.x = stickConfig.baseRadius + 25;
-    stickConfig.y = touchH / 2;
+// タッチコントロール設定
+let stickX = 80, stickY = 80, stickR = 50, knobR = 25;
+let btnJumpX = 300, btnJumpY = 80, btnJumpR = 40;
+let btnDashX = 220, btnDashY = 80, btnDashR = 32;
+let knobDX = 0, knobDY = 0;
+
+function updateTouchLayout() {
+    const w = touchCanvas.width;
+    const h = touchCanvas.height;
+    const s = h / 140;
     
-    buttonConfig.jump.radius = 40 * scale;
-    buttonConfig.dash.radius = 32 * scale;
-    buttonConfig.jump.x = screenW - buttonConfig.jump.radius - 25;
-    buttonConfig.dash.x = screenW - buttonConfig.jump.radius * 2 - buttonConfig.dash.radius - 50;
-    buttonConfig.jump.y = touchH / 2;
-    buttonConfig.dash.y = touchH / 2;
+    stickR = 45 * s;
+    knobR = 22 * s;
+    stickX = stickR + 20;
+    stickY = h / 2;
+    
+    btnJumpR = 38 * s;
+    btnDashR = 30 * s;
+    btnJumpX = w - btnJumpR - 20;
+    btnDashX = w - btnJumpR * 2 - btnDashR - 40;
+    btnJumpY = h / 2;
+    btnDashY = h / 2;
 }
 
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
+resize();
+window.addEventListener('resize', resize);
 
-const defaultKeyBindings = {
-    left:'ArrowLeft', right:'ArrowRight',
-    jump:'Space', jump2:'KeyZ', jump3:'ArrowUp',
-    dash:'KeyX', dash2:'ShiftLeft',
-    restart:'KeyR', confirm:'Enter'
-};
-let keyBindings = { ...defaultKeyBindings };
+// 入力状態
+const input = { left: false, right: false, jump: false, dash: false };
+const inputPressed = { jump: false, dash: false };
+let prevJump = false, prevDash = false;
 
-function loadKeyBindings() {
-    const s = localStorage.getItem('iwbtg_keybindings');
-    if (s) { try { keyBindings = { ...defaultKeyBindings, ...JSON.parse(s) }; } catch(e) { keyBindings = { ...defaultKeyBindings }; } }
-    updateKeyButtons();
-}
-function saveKeyBindings() { localStorage.setItem('iwbtg_keybindings', JSON.stringify(keyBindings)); }
-function resetKeyBindings() { keyBindings = { ...defaultKeyBindings }; saveKeyBindings(); updateKeyButtons(); }
-function updateKeyButtons() {
-    document.querySelectorAll('.key-btn').forEach(btn => {
-        const a = btn.dataset.action; if (keyBindings[a]) btn.textContent = formatKeyName(keyBindings[a]);
-    });
-}
-function formatKeyName(c) { return c.replace('Key','').replace('Arrow','').replace('Shift','Shift ').replace('Left','L').replace('Right','R'); }
+// タッチ管理
+const touches = {};
 
-let listeningButton = null;
-function openOptions() { optionsOverlay.style.display = 'block'; gameState = 'options'; }
-function closeOptions() {
-    optionsOverlay.style.display = 'none';
-    gameState = (currentLevel === 0 && !player.dead) ? 'title' : 'playing';
-    saveKeyBindings();
-}
-document.querySelectorAll('.key-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        if (listeningButton) listeningButton.classList.remove('listening');
-        listeningButton = this; this.classList.add('listening'); this.textContent = 'Press a key...';
-    });
-});
-document.addEventListener('keydown', function(e) {
-    if (listeningButton) {
-        e.preventDefault(); keyBindings[listeningButton.dataset.action] = e.code;
-        listeningButton.textContent = formatKeyName(e.code);
-        listeningButton.classList.remove('listening'); listeningButton = null;
-    }
-});
-
-const touchState = { 
-    left: false,
-    right: false,
-    jump: false, 
-    dash: false
-};
-const activeTouches = {};
-
-const stickConfig = { x: 100, y: 75, baseRadius: 50, stickRadius: 28, maxDist: 40, currentX: 0, currentY: 0 };
-const buttonConfig = {
-    jump: { x: 300, y: 75, radius: 40, label: 'JUMP', color: '#00aa00' },
-    dash: { x: 200, y: 75, radius: 32, label: 'DASH', color: '#0088ff' }
-};
-
-function handleTouchStart(e) {
+function touchStart(e) {
     e.preventDefault();
-    for (let t of e.changedTouches) {
+    for (const t of e.changedTouches) {
         const x = t.clientX;
         const y = t.clientY - (window.innerHeight - touchH);
         
-        activeTouches[t.identifier] = { x, y, type: null };
+        touches[t.identifier] = { type: null };
         
-        const stickDist = Math.sqrt((x - stickConfig.x) ** 2 + (y - stickConfig.y) ** 2);
-        if (stickDist < stickConfig.baseRadius * 1.5) {
-            activeTouches[t.identifier].type = 'stick';
+        // スティック
+        if (dist(x, y, stickX, stickY) < stickR * 1.5) {
+            touches[t.identifier].type = 'stick';
             updateStick(x, y);
             continue;
         }
-        
-        const jumpDist = Math.sqrt((x - buttonConfig.jump.x) ** 2 + (y - buttonConfig.jump.y) ** 2);
-        if (jumpDist < buttonConfig.jump.radius * 1.5) {
-            activeTouches[t.identifier].type = 'jump';
-            touchState.jump = true;
+        // ジャンプ
+        if (dist(x, y, btnJumpX, btnJumpY) < btnJumpR * 1.5) {
+            touches[t.identifier].type = 'jump';
+            input.jump = true;
             continue;
         }
-        
-        const dashDist = Math.sqrt((x - buttonConfig.dash.x) ** 2 + (y - buttonConfig.dash.y) ** 2);
-        if (dashDist < buttonConfig.dash.radius * 1.5) {
-            activeTouches[t.identifier].type = 'dash';
-            touchState.dash = true;
+        // ダッシュ
+        if (dist(x, y, btnDashX, btnDashY) < btnDashR * 1.5) {
+            touches[t.identifier].type = 'dash';
+            input.dash = true;
         }
     }
 }
 
-function handleTouchMove(e) {
+function touchMove(e) {
     e.preventDefault();
-    for (let t of e.changedTouches) {
-        const touch = activeTouches[t.identifier];
-        if (touch && touch.type === 'stick') {
+    for (const t of e.changedTouches) {
+        if (touches[t.identifier] && touches[t.identifier].type === 'stick') {
             const x = t.clientX;
             const y = t.clientY - (window.innerHeight - touchH);
             updateStick(x, y);
@@ -261,178 +201,54 @@ function handleTouchMove(e) {
     }
 }
 
-function handleTouchEnd(e) {
+function touchEnd(e) {
     e.preventDefault();
-    for (let t of e.changedTouches) {
-        const touch = activeTouches[t.identifier];
-        if (touch) {
-            if (touch.type === 'stick') {
-                touchState.left = false;
-                touchState.right = false;
-                stickConfig.currentX = 0;
-                stickConfig.currentY = 0;
-            } else if (touch.type === 'jump') {
-                touchState.jump = false;
-            } else if (touch.type === 'dash') {
-                touchState.dash = false;
+    for (const t of e.changedTouches) {
+        const info = touches[t.identifier];
+        if (info) {
+            if (info.type === 'stick') {
+                input.left = false;
+                input.right = false;
+                knobDX = 0;
+                knobDY = 0;
+            } else if (info.type === 'jump') {
+                input.jump = false;
+            } else if (info.type === 'dash') {
+                input.dash = false;
             }
-            delete activeTouches[t.identifier];
+            delete touches[t.identifier];
         }
     }
 }
 
 function updateStick(x, y) {
-    let dx = x - stickConfig.x;
-    let dy = y - stickConfig.y;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    if (d > stickConfig.maxDist) {
-        dx = (dx / d) * stickConfig.maxDist;
-        dy = (dy / d) * stickConfig.maxDist;
+    let dx = x - stickX;
+    let dy = y - stickY;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    const maxD = stickR * 0.8;
+    if (d > maxD) {
+        dx = dx / d * maxD;
+        dy = dy / d * maxD;
     }
-    stickConfig.currentX = dx;
-    stickConfig.currentY = dy;
-    
-    const normalized = dx / stickConfig.maxDist;
-    touchState.left = normalized < -0.3;
-    touchState.right = normalized > 0.3;
+    knobDX = dx;
+    knobDY = dy;
+    const norm = dx / maxD;
+    input.left = norm < -0.3;
+    input.right = norm > 0.3;
 }
 
-if (isTouchDevice) {
-    touchCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    touchCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    touchCanvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-    touchCanvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+function dist(x1, y1, x2, y2) {
+    return Math.sqrt((x1-x2)**2 + (y1-y2)**2);
 }
 
-function drawTouchControls() {
-    if (!isTouchDevice) return;
+if (isMobile) {
+    touchCanvas.addEventListener('touchstart', touchStart, { passive: false });
+    touchCanvas.addEventListener('touchmove', touchMove, { passive: false });
+    touchCanvas.addEventListener('touchend', touchEnd, { passive: false });
+    touchCanvas.addEventListener('touchcancel', touchEnd, { passive: false });
     
-    const dpr = window.devicePixelRatio || 1;
-    const w = touchCanvas.width / dpr;
-    const h = touchCanvas.height / dpr;
-    
-    touchCtx.clearRect(0, 0, w, h);
-    
-    touchCtx.fillStyle = '#1a1a2e';
-    touchCtx.fillRect(0, 0, w, h);
-    touchCtx.strokeStyle = '#333';
-    touchCtx.lineWidth = 2;
-    touchCtx.beginPath();
-    touchCtx.moveTo(0, 1);
-    touchCtx.lineTo(w, 1);
-    touchCtx.stroke();
-    
-    // スティック
-    touchCtx.beginPath();
-    touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = '#2a2a3a';
-    touchCtx.fill();
-    touchCtx.strokeStyle = '#4a4a5a';
-    touchCtx.lineWidth = 3;
-    touchCtx.stroke();
-    
-    const kx = stickConfig.x + stickConfig.currentX;
-    const ky = stickConfig.y + stickConfig.currentY;
-    touchCtx.beginPath();
-    touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = (touchState.left || touchState.right) ? '#888' : '#666';
-    touchCtx.fill();
-    touchCtx.strokeStyle = '#999';
-    touchCtx.lineWidth = 2;
-    touchCtx.stroke();
-    
-    drawTouchButton(buttonConfig.jump, touchState.jump);
-    drawTouchButton(buttonConfig.dash, touchState.dash);
-}
-
-function drawTouchButton(cfg, pressed) {
-    const { x, y, radius: r, label, color } = cfg;
-    
-    touchCtx.beginPath();
-    touchCtx.arc(x, y, r, 0, Math.PI * 2);
-    touchCtx.fillStyle = pressed ? color : darkenColor(color, 20);
-    touchCtx.fill();
-    touchCtx.strokeStyle = pressed ? '#fff' : '#666';
-    touchCtx.lineWidth = pressed ? 4 : 2;
-    touchCtx.stroke();
-    
-    touchCtx.fillStyle = '#fff';
-    touchCtx.font = `bold ${r * 0.4}px monospace`;
-    touchCtx.textAlign = 'center';
-    touchCtx.textBaseline = 'middle';
-    touchCtx.fillText(label, x, y);
-}
-
-function darkenColor(c, p) {
-    const n = parseInt(c.replace('#', ''), 16);
-    const a = Math.round(2.55 * p);
-    return '#' + (0x1000000 + Math.max(0, (n >> 16) - a) * 0x10000 + Math.max(0, ((n >> 8) & 0xFF) - a) * 0x100 + Math.max(0, (n & 0xFF) - a)).toString(16).slice(1);
-}
-
-let gameState = 'title';
-let deathCount = 0;
-let currentLevel = 0;
-let deathTimer = 0;
-let clearTimer = 0;
-let gameTime = 0;
-let slowMotion = 1;
-let flashEffect = 0;
-
-let particles = [];
-let bloodParticles = [];
-let sparkParticles = [];
-let textParticles = [];
-let trailParticles = [];
-let backgroundStars = [];
-for (let i = 0; i < 100; i++) {
-    backgroundStars.push({
-        x: Math.random() * 800,
-        y: Math.random() * 600,
-        size: Math.random() * 2 + 0.5,
-        speed: Math.random() * 0.5 + 0.1,
-        twinkle: Math.random() * Math.PI * 2
-    });
-}
-
-const player = {
-    x: 50, y: 500, w: 16, h: 20,
-    vx: 0, vy: 0, speed: 4, jumpForce: -9,
-    onGround: false, dead: false, facing: 1,
-    doubleJump: true, jumpHeld: false,
-    dashCooldown: 0, dashing: false, dashTime: 0,
-    invincible: 0, runFrame: 0
-};
-
-const keys = {};
-let keysPressed = {};
-let prevTouchJump = false;
-let prevTouchDash = false;
-
-document.addEventListener('keydown', e => {
-    if (listeningButton) return;
-    if (!keys[e.code]) keysPressed[e.code] = true;
-    keys[e.code] = true;
-    if (e.code === 'Escape') {
-        if (gameState === 'options') closeOptions();
-        else if (gameState === 'title' || gameState === 'playing') openOptions();
-        e.preventDefault();
-        return;
-    }
-    if (e.code === keyBindings.confirm || e.code === keyBindings.jump || e.code === keyBindings.jump2) {
-        if (gameState === 'title') { gameState = 'playing'; resetLevel(); }
-        else if (gameState === 'dead' && deathTimer > 30) { gameState = 'playing'; resetLevel(); }
-        else if (gameState === 'clear' && clearTimer > 60) { gameState = 'title'; currentLevel = 0; deathCount = 0; }
-    }
-    if (e.code === keyBindings.restart && (gameState === 'playing' || gameState === 'dead')) {
-        gameState = 'playing';
-        resetLevel();
-    }
-    e.preventDefault();
-});
-document.addEventListener('keyup', e => { keys[e.code] = false; });
-
-if (isTouchDevice) {
-    canvas.addEventListener('touchstart', e => {
+    // ゲーム画面タッチでスタート/リトライ
+    canvas.addEventListener('touchstart', function(e) {
         e.preventDefault();
         if (gameState === 'title') { gameState = 'playing'; resetLevel(); }
         else if (gameState === 'dead' && deathTimer > 30) { gameState = 'playing'; resetLevel(); }
@@ -440,609 +256,454 @@ if (isTouchDevice) {
     }, { passive: false });
 }
 
-function isActionPressed(a) {
-    switch (a) {
-        case 'left': return touchState.left || keys[keyBindings.left];
-        case 'right': return touchState.right || keys[keyBindings.right];
-        case 'jump': return touchState.jump || keys[keyBindings.jump] || keys[keyBindings.jump2] || keys[keyBindings.jump3];
-        case 'dash': return touchState.dash || keys[keyBindings.dash] || keys[keyBindings.dash2];
-    }
-    return false;
+// タッチコントロール描画
+function drawTouch() {
+    if (!isMobile) return;
+    
+    const w = touchCanvas.width;
+    const h = touchCanvas.height;
+    
+    touchCtx.fillStyle = '#1a1a2e';
+    touchCtx.fillRect(0, 0, w, h);
+    
+    // スティックベース
+    touchCtx.beginPath();
+    touchCtx.arc(stickX, stickY, stickR, 0, Math.PI * 2);
+    touchCtx.fillStyle = '#2a2a4a';
+    touchCtx.fill();
+    touchCtx.strokeStyle = '#3a3a5a';
+    touchCtx.lineWidth = 3;
+    touchCtx.stroke();
+    
+    // スティックノブ
+    touchCtx.beginPath();
+    touchCtx.arc(stickX + knobDX, stickY + knobDY, knobR, 0, Math.PI * 2);
+    touchCtx.fillStyle = (input.left || input.right) ? '#888' : '#555';
+    touchCtx.fill();
+    touchCtx.strokeStyle = '#aaa';
+    touchCtx.lineWidth = 2;
+    touchCtx.stroke();
+    
+    // ジャンプボタン
+    touchCtx.beginPath();
+    touchCtx.arc(btnJumpX, btnJumpY, btnJumpR, 0, Math.PI * 2);
+    touchCtx.fillStyle = input.jump ? '#00cc00' : '#006600';
+    touchCtx.fill();
+    touchCtx.strokeStyle = input.jump ? '#fff' : '#888';
+    touchCtx.lineWidth = 3;
+    touchCtx.stroke();
+    touchCtx.fillStyle = '#fff';
+    touchCtx.font = 'bold 14px monospace';
+    touchCtx.textAlign = 'center';
+    touchCtx.textBaseline = 'middle';
+    touchCtx.fillText('JUMP', btnJumpX, btnJumpY);
+    
+    // ダッシュボタン
+    touchCtx.beginPath();
+    touchCtx.arc(btnDashX, btnDashY, btnDashR, 0, Math.PI * 2);
+    touchCtx.fillStyle = input.dash ? '#0088ff' : '#004488';
+    touchCtx.fill();
+    touchCtx.strokeStyle = input.dash ? '#fff' : '#888';
+    touchCtx.lineWidth = 3;
+    touchCtx.stroke();
+    touchCtx.fillStyle = '#fff';
+    touchCtx.font = 'bold 12px monospace';
+    touchCtx.fillText('DASH', btnDashX, btnDashY);
 }
-function isActionJustPressed(a) {
-    switch (a) {
-        case 'dash':
-            if (touchState.dash && !prevTouchDash) return true;
-            return keysPressed[keyBindings.dash] || keysPressed[keyBindings.dash2];
-        case 'jump':
-            if (touchState.jump && !prevTouchJump) return true;
-            return keysPressed[keyBindings.jump] || keysPressed[keyBindings.jump2] || keysPressed[keyBindings.jump3];
-    }
-    return false;
-}
-function clearKeysPressed() { keysPressed = {}; }
 
-const levels = [
-    {
-        name: "SAMPLE STAGE",
-        spawnX: 50, spawnY: 500, bgColor: '#0a0a1a',
-        platforms: [
-            { x: 0, y: 560, w: 300, h: 40, type: 'grass' },
-            { x: 400, y: 460, w: 80, h: 16, type: 'stone' },
-            { x: 600, y: 360, w: 80, h: 16, type: 'stone' },
-            { x: 700, y: 260, w: 100, h: 16, type: 'gold' },
-        ],
-        traps: [],
-        exitX: 740, exitY: 225,
-        messages: ["SAMPLE: Reach the exit!"]
-    },
+// キーボード
+const keys = {};
+const keyBindings = { left: 'ArrowLeft', right: 'ArrowRight', jump: 'Space', jump2: 'KeyZ', dash: 'KeyX', dash2: 'ShiftLeft', restart: 'KeyR' };
+let listeningBtn = null;
+
+document.addEventListener('keydown', e => {
+    if (listeningBtn) {
+        keyBindings[listeningBtn.dataset.action] = e.code;
+        listeningBtn.textContent = e.code.replace('Key','').replace('Arrow','');
+        listeningBtn.classList.remove('listening');
+        listeningBtn = null;
+        e.preventDefault();
+        return;
+    }
+    keys[e.code] = true;
+    if (e.code === 'Escape') {
+        if (gameState === 'options') closeOptions();
+        else if (gameState === 'title' || gameState === 'playing') openOptions();
+    }
+    if (e.code === keyBindings.jump || e.code === keyBindings.jump2 || e.code === 'Enter') {
+        if (gameState === 'title') { gameState = 'playing'; resetLevel(); }
+        else if (gameState === 'dead' && deathTimer > 30) { gameState = 'playing'; resetLevel(); }
+        else if (gameState === 'clear' && clearTimer > 60) { gameState = 'title'; currentLevel = 0; deathCount = 0; }
+    }
+    if (e.code === keyBindings.restart && (gameState === 'playing' || gameState === 'dead')) {
+        gameState = 'playing'; resetLevel();
+    }
+    e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+document.querySelectorAll('.key-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        if (listeningBtn) listeningBtn.classList.remove('listening');
+        listeningBtn = this;
+        this.classList.add('listening');
+        this.textContent = '...';
+    });
+});
+
+function openOptions() { document.getElementById('optionsOverlay').style.display = 'block'; gameState = 'options'; }
+function closeOptions() { document.getElementById('optionsOverlay').style.display = 'none'; gameState = currentLevel === 0 ? 'title' : 'playing'; }
+function resetKeys() { Object.assign(keyBindings, { left: 'ArrowLeft', right: 'ArrowRight', jump: 'Space', jump2: 'KeyZ', dash: 'KeyX', restart: 'KeyR' }); }
+
+function getInput(action) {
+    if (action === 'left') return input.left || keys[keyBindings.left];
+    if (action === 'right') return input.right || keys[keyBindings.right];
+    if (action === 'jump') return input.jump || keys[keyBindings.jump] || keys[keyBindings.jump2];
+    if (action === 'dash') return input.dash || keys[keyBindings.dash] || keys[keyBindings.dash2];
+    return false;
+}
+
+function getInputPressed(action) {
+    if (action === 'jump') return (input.jump && !prevJump) || (!prevJump && (keys[keyBindings.jump] || keys[keyBindings.jump2]));
+    if (action === 'dash') return (input.dash && !prevDash) || (!prevDash && (keys[keyBindings.dash] || keys[keyBindings.dash2]));
+    return false;
+}
+
+// ゲーム状態
+let gameState = 'title';
+let gameTime = 0;
+let deathCount = 0;
+let currentLevel = 0;
+let deathTimer = 0;
+let clearTimer = 0;
+let slowMotion = 1;
+
+// プレイヤー
+const P = { x: 50, y: 500, w: 16, h: 20, vx: 0, vy: 0, speed: 4, jumpF: -9, onG: false, dead: false, face: 1, dblJump: true, jumpHeld: false, dashCD: 0, dashing: false, dashT: 0, inv: 0, run: 0 };
+
+// パーティクル
+let particles = [];
+let stars = [];
+for (let i = 0; i < 80; i++) stars.push({ x: Math.random()*GW, y: Math.random()*GH, s: Math.random()*2+0.5, sp: Math.random()*0.3+0.1, tw: Math.random()*6.28 });
+
+// ステージ
+const levels = [{
+    name: "SAMPLE STAGE",
+    spawnX: 50, spawnY: 500, bg: '#0a0a1a',
+    platforms: [
+        { x: 0, y: 560, w: 300, h: 40, type: 'grass' },
+        { x: 400, y: 460, w: 80, h: 16, type: 'stone' },
+        { x: 600, y: 360, w: 80, h: 16, type: 'stone' },
+        { x: 700, y: 260, w: 100, h: 16, type: 'gold' },
+    ],
+    exitX: 740, exitY: 225,
+    msg: "Reach the exit!"
+}];
+
+const RANKS = [
+    { d: 0, n: 'LEGEND', c: '#ff0' },
+    { d: 50, n: 'THE GUY', c: '#f80' },
+    { d: 150, n: 'ALMOST', c: '#0f0' },
+    { d: 300, n: 'THE BOY', c: '#0ff' },
+    { d: Infinity, n: 'MASOCHIST', c: '#f0f' }
 ];
 
-const GAME_CONFIG = {
-    title: "I WANNA BE THE GUY",
-    subtitle: "CUSTOM EDITION",
-    ranks: [
-        { maxDeaths: 0, name: 'IMPOSSIBLE LEGEND', color: '#ffff00' },
-        { maxDeaths: 50, name: 'THE GUY', color: '#ff8800' },
-        { maxDeaths: 150, name: 'ALMOST THE GUY', color: '#00ff00' },
-        { maxDeaths: 300, name: 'THE BOY', color: '#00ffff' },
-        { maxDeaths: 500, name: 'THE KID', color: '#8888ff' },
-        { maxDeaths: Infinity, name: 'THE MASOCHIST', color: '#ff00ff' },
-    ],
-    difficulties: [{ from: 0, label: '', color: '#ffcc00' }],
-};
-
 function resetLevel() {
-    const lvl = levels[currentLevel];
-    if (!lvl) return;
-    player.x = lvl.spawnX;
-    player.y = lvl.spawnY;
-    player.vx = 0;
-    player.vy = 0;
-    player.dead = false;
-    player.onGround = false;
-    player.doubleJump = true;
-    player.dashCooldown = 0;
-    player.dashing = false;
-    player.invincible = 0;
-    player.jumpHeld = false;
-    bloodParticles = [];
-    sparkParticles = [];
-    textParticles = [];
-    trailParticles = [];
+    const L = levels[currentLevel];
+    P.x = L.spawnX; P.y = L.spawnY;
+    P.vx = 0; P.vy = 0; P.dead = false; P.onG = false;
+    P.dblJump = true; P.dashCD = 0; P.dashing = false;
+    P.inv = 0; P.jumpHeld = false;
     particles = [];
     slowMotion = 1;
-    flashEffect = 0;
-    keysPressed = {};
-    prevTouchJump = false;
-    prevTouchDash = false;
-}
-
-function createTextParticle(x, y, text, color = '#fff') {
-    textParticles.push({ x, y, text, color, vy: -2, life: 60, size: 16 });
 }
 
 function killPlayer() {
-    if (player.dead || player.invincible > 0) return;
-    player.dead = true;
+    if (P.dead || P.inv > 0) return;
+    P.dead = true;
     deathCount++;
     deathTimer = 0;
     gameState = 'dead';
     slowMotion = 0.3;
-    for (let i = 0; i < 60; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const s = Math.random() * 15 + 3;
-        bloodParticles.push({
-            x: player.x + player.w / 2,
-            y: player.y + player.h / 2,
-            vx: Math.cos(a) * s,
-            vy: Math.sin(a) * s - 5,
-            life: 80 + Math.random() * 80,
-            size: 2 + Math.random() * 8,
-            color: Math.random() > 0.3 ? '#ff0000' : '#880000',
-            gravity: 0.4
-        });
+    for (let i = 0; i < 40; i++) {
+        const a = Math.random() * 6.28;
+        particles.push({ x: P.x+P.w/2, y: P.y+P.h/2, vx: Math.cos(a)*Math.random()*12, vy: Math.sin(a)*Math.random()*12-4, life: 60+Math.random()*60, size: 2+Math.random()*6, col: Math.random()>0.3?'#f00':'#800', g: 0.3 });
     }
-    for (let i = 0; i < 20; i++) {
-        sparkParticles.push({
-            x: player.x + player.w / 2,
-            y: player.y + player.h / 2,
-            vx: (Math.random() - 0.5) * 20,
-            vy: (Math.random() - 0.5) * 20,
-            life: 20 + Math.random() * 20,
-            color: '#fff'
-        });
-    }
-    createTextParticle(player.x, player.y - 20, 'DEAD!', '#ff0000');
 }
 
-function rectCollision(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
+function rect(a, b) { return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y; }
 
 function update() {
     gameTime++;
     if (slowMotion < 1) slowMotion = Math.min(1, slowMotion + 0.02);
-    if (flashEffect > 0) flashEffect--;
     
-    if (gameState === 'dead') { deathTimer++; updateParticles(); return; }
-    if (gameState === 'clear') { clearTimer++; updateParticles(); return; }
-    if (gameState !== 'playing') return;
-
-    const lvl = levels[currentLevel];
-    if (!lvl) return;
-
-    if (Math.abs(player.vx) > 0 || Math.abs(player.vy) > 2) {
-        trailParticles.push({
-            x: player.x + player.w / 2,
-            y: player.y + player.h / 2,
-            size: player.dashing ? 8 : 4,
-            life: player.dashing ? 15 : 8,
-            color: player.dashing ? '#00ffff' : '#ffffff44'
-        });
+    // 入力更新
+    inputPressed.jump = getInputPressed('jump');
+    inputPressed.dash = getInputPressed('dash');
+    
+    if (gameState === 'dead') { deathTimer++; updateParticles(); prevJump = input.jump; prevDash = input.dash; return; }
+    if (gameState === 'clear') { clearTimer++; updateParticles(); prevJump = input.jump; prevDash = input.dash; return; }
+    if (gameState !== 'playing') { prevJump = input.jump; prevDash = input.dash; return; }
+    
+    const L = levels[currentLevel];
+    
+    if (P.inv > 0) P.inv--;
+    if (P.dashCD > 0) P.dashCD--;
+    
+    // 移動
+    if (!P.dashing) {
+        P.vx = 0;
+        if (getInput('left')) { P.vx = -P.speed; P.face = -1; }
+        if (getInput('right')) { P.vx = P.speed; P.face = 1; }
     }
-
-    if (player.invincible > 0) player.invincible--;
-    if (player.dashCooldown > 0) player.dashCooldown--;
-
-    if (!player.dashing) {
-        player.vx = 0;
-        if (isActionPressed('left')) { player.vx = -player.speed; player.facing = -1; }
-        if (isActionPressed('right')) { player.vx = player.speed; player.facing = 1; }
+    
+    // ダッシュ
+    if (inputPressed.dash && P.dashCD <= 0 && !P.dashing) {
+        P.dashing = true; P.dashT = 8; P.dashCD = 45;
+        P.vx = P.face * 15; P.vy = 0; P.inv = 10;
     }
-
-    if (isActionJustPressed('dash') && player.dashCooldown <= 0 && !player.dashing) {
-        player.dashing = true;
-        player.dashTime = 8;
-        player.dashCooldown = 45;
-        player.vx = player.facing * 15;
-        player.vy = 0;
-        player.invincible = 10;
-        for (let i = 0; i < 10; i++) {
-            particles.push({
-                x: player.x + player.w / 2,
-                y: player.y + player.h / 2,
-                vx: -player.facing * (Math.random() * 5 + 2),
-                vy: (Math.random() - 0.5) * 3,
-                life: 15,
-                size: 3 + Math.random() * 3,
-                color: '#00ffff',
-                gravity: 0
-            });
+    if (P.dashing) { P.dashT--; if (P.dashT <= 0) { P.dashing = false; P.vx = P.face * P.speed * 0.5; } }
+    
+    // ジャンプ
+    const jk = getInput('jump');
+    if (jk && !P.jumpHeld) {
+        if (P.onG) { P.vy = P.jumpF; P.onG = false; }
+        else if (P.dblJump) { P.vy = P.jumpF * 0.9; P.dblJump = false; }
+        P.jumpHeld = true;
+    }
+    if (!jk) P.jumpHeld = false;
+    if (!jk && P.vy < -2 && !P.dashing) P.vy = -2;
+    if (!P.dashing) { P.vy += 0.5; if (P.vy > 14) P.vy = 14; }
+    
+    // 水平移動＆衝突
+    P.x += P.vx * slowMotion;
+    for (const pl of L.platforms) {
+        if (rect(P, pl)) {
+            if (P.vx > 0) P.x = pl.x - P.w;
+            else if (P.vx < 0) P.x = pl.x + pl.w;
+            if (P.dashing) P.dashing = false;
         }
     }
-    if (player.dashing) {
-        player.dashTime--;
-        if (player.dashTime <= 0) {
-            player.dashing = false;
-            player.vx = player.facing * player.speed * 0.5;
+    
+    // 垂直移動＆衝突
+    P.y += P.vy * slowMotion;
+    P.onG = false;
+    for (const pl of L.platforms) {
+        if (rect(P, pl)) {
+            if (P.vy > 0) { P.y = pl.y - P.h; P.vy = 0; P.onG = true; P.dblJump = true; }
+            else if (P.vy < 0) { P.y = pl.y + pl.h; P.vy = 0; }
         }
     }
-
-    const jumpKey = isActionPressed('jump');
-    if (jumpKey && !player.jumpHeld) {
-        if (player.onGround) {
-            player.vy = player.jumpForce;
-            player.onGround = false;
-            for (let i = 0; i < 5; i++) {
-                particles.push({
-                    x: player.x + player.w / 2 + (Math.random() - 0.5) * 10,
-                    y: player.y + player.h,
-                    vx: (Math.random() - 0.5) * 3,
-                    vy: Math.random() * 2,
-                    life: 15,
-                    size: 2 + Math.random() * 2,
-                    color: '#888',
-                    gravity: 0.1
-                });
-            }
-        } else if (player.doubleJump) {
-            player.vy = player.jumpForce * 0.9;
-            player.doubleJump = false;
-            for (let i = 0; i < 8; i++) {
-                const a = (i / 8) * Math.PI * 2;
-                particles.push({
-                    x: player.x + player.w / 2,
-                    y: player.y + player.h / 2,
-                    vx: Math.cos(a) * 3,
-                    vy: Math.sin(a) * 3,
-                    life: 20,
-                    size: 3,
-                    color: '#88ff88',
-                    gravity: 0
-                });
-            }
-        }
-        player.jumpHeld = true;
-    }
-    if (!jumpKey) player.jumpHeld = false;
-    if (!jumpKey && player.vy < -2 && !player.dashing) player.vy = -2;
-    if (!player.dashing) {
-        player.vy += 0.5;
-        if (player.vy > 14) player.vy = 14;
-    }
-
-    player.x += player.vx * slowMotion;
-    const allPlatforms = [...lvl.platforms];
-    for (const p of allPlatforms) {
-        if (rectCollision(player, p)) {
-            if (player.vx > 0) player.x = p.x - player.w;
-            else if (player.vx < 0) player.x = p.x + p.w;
-            if (player.dashing) player.dashing = false;
-        }
-    }
-
-    player.y += player.vy * slowMotion;
-    player.onGround = false;
-    for (const p of allPlatforms) {
-        if (rectCollision(player, p)) {
-            if (player.vy > 0) {
-                player.y = p.y - player.h;
-                player.vy = 0;
-                player.onGround = true;
-                player.doubleJump = true;
-            } else if (player.vy < 0) {
-                player.y = p.y + p.h;
-                player.vy = 0;
-            }
-        }
-    }
-
-    if (Math.abs(player.vx) > 0.1) player.runFrame += 0.3;
-    else player.runFrame = 0;
-
-    if (player.y > 650 || player.x < -50 || player.x > 850 || player.y < -100) {
-        killPlayer();
-        clearKeysPressed();
-        return;
-    }
-
-    if (rectCollision(player, { x: lvl.exitX, y: lvl.exitY, w: 30, h: 36 })) {
+    
+    if (Math.abs(P.vx) > 0.1) P.run += 0.3; else P.run = 0;
+    
+    // 画面外
+    if (P.y > 650 || P.x < -50 || P.x > 850 || P.y < -100) { killPlayer(); }
+    
+    // ゴール
+    if (rect(P, { x: L.exitX, y: L.exitY, w: 30, h: 36 })) {
         currentLevel++;
         if (currentLevel >= levels.length) {
-            gameState = 'clear';
-            clearTimer = 0;
-            for (let i = 0; i < 200; i++) {
-                particles.push({
-                    x: player.x + player.w / 2,
-                    y: player.y + player.h / 2,
-                    vx: (Math.random() - 0.5) * 20,
-                    vy: (Math.random() - 0.5) * 20,
-                    life: 150 + Math.random() * 100,
-                    size: 2 + Math.random() * 8,
-                    color: ['#ff0', '#0ff', '#f0f', '#0f0', '#f80', '#fff'][Math.floor(Math.random() * 6)],
-                    gravity: 0.03
-                });
-            }
-        } else {
-            resetLevel();
-        }
+            gameState = 'clear'; clearTimer = 0;
+            for (let i = 0; i < 100; i++) particles.push({ x: P.x+P.w/2, y: P.y+P.h/2, vx: (Math.random()-0.5)*20, vy: (Math.random()-0.5)*20, life: 100+Math.random()*60, size: 2+Math.random()*6, col: ['#ff0','#0ff','#f0f','#0f0'][Math.floor(Math.random()*4)], g: 0.02 });
+        } else resetLevel();
     }
-
+    
     updateParticles();
-    prevTouchJump = touchState.jump;
-    prevTouchDash = touchState.dash;
-    clearKeysPressed();
+    prevJump = input.jump;
+    prevDash = input.dash;
 }
 
 function updateParticles() {
-    for (let i = bloodParticles.length - 1; i >= 0; i--) {
-        const p = bloodParticles[i];
-        p.x += p.vx * slowMotion;
-        p.y += p.vy * slowMotion;
-        p.vy += p.gravity * slowMotion;
-        p.vx *= 0.99;
-        p.life--;
-        if (p.life <= 0) bloodParticles.splice(i, 1);
-    }
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += p.gravity || 0;
+        p.x += p.vx * slowMotion;
+        p.y += p.vy * slowMotion;
+        p.vy += (p.g || 0) * slowMotion;
         p.vx *= 0.98;
         p.life--;
         if (p.life <= 0) particles.splice(i, 1);
     }
-    for (let i = sparkParticles.length - 1; i >= 0; i--) {
-        const p = sparkParticles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vx *= 0.9;
-        p.vy *= 0.9;
-        p.life--;
-        if (p.life <= 0) sparkParticles.splice(i, 1);
-    }
-    for (let i = textParticles.length - 1; i >= 0; i--) {
-        const p = textParticles[i];
-        p.y += p.vy;
-        p.life--;
-        if (p.life <= 0) textParticles.splice(i, 1);
-    }
-    for (let i = trailParticles.length - 1; i >= 0; i--) {
-        const p = trailParticles[i];
-        p.life--;
-        p.size *= 0.9;
-        if (p.life <= 0) trailParticles.splice(i, 1);
-    }
-    for (const s of backgroundStars) {
-        s.twinkle += 0.05;
-        s.y += s.speed;
-        if (s.y > 600) { s.y = 0; s.x = Math.random() * 800; }
-    }
+    for (const s of stars) { s.tw += 0.05; s.y += s.sp; if (s.y > GH) { s.y = 0; s.x = Math.random() * GW; } }
 }
 
 function draw() {
-    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
-
-    const lvl = levels[currentLevel] || levels[0];
-    const g = ctx.createLinearGradient(0, 0, 0, 600);
-    g.addColorStop(0, lvl.bgColor || '#0a0a1a');
-    g.addColorStop(1, '#000010');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 800, 600);
-
-    for (const s of backgroundStars) {
-        ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.sin(s.twinkle) * 0.3})`;
+    const L = levels[currentLevel] || levels[0];
+    
+    // 背景
+    ctx.fillStyle = L.bg || '#0a0a1a';
+    ctx.fillRect(0, 0, GW, GH);
+    
+    // 星
+    for (const s of stars) {
+        ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.sin(s.tw) * 0.3})`;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, s.s, 0, 6.28);
         ctx.fill();
     }
-
-    if (gameState === 'title') { drawTitle(); drawTouchControls(); return; }
-    if (gameState === 'clear') { drawClear(); drawTouchControls(); return; }
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.02)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 800; i += 32) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 600); ctx.stroke();
-    }
-    for (let i = 0; i < 600; i += 32) {
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(800, i); ctx.stroke();
-    }
-
-    for (const p of trailParticles) {
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life / 15;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    for (const p of lvl.platforms) drawPlatform(p);
-
-    drawExit(lvl.exitX, lvl.exitY);
-
-    if (!player.dead) drawPlayer();
-
-    for (const p of bloodParticles) {
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = Math.min(1, p.life / 30);
-        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-    }
-    ctx.globalAlpha = 1;
-
+    
+    if (gameState === 'title') { drawTitle(); drawTouch(); return; }
+    if (gameState === 'clear') { drawClear(); drawTouch(); return; }
+    
+    // プラットフォーム
+    for (const pl of L.platforms) drawPlatform(pl);
+    
+    // ゴール
+    drawExit(L.exitX, L.exitY);
+    
+    // プレイヤー
+    if (!P.dead) drawPlayer();
+    
+    // パーティクル
     for (const p of particles) {
-        ctx.fillStyle = p.color;
+        ctx.fillStyle = p.col;
         ctx.globalAlpha = Math.min(1, p.life / 30);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
     }
     ctx.globalAlpha = 1;
-
-    for (const p of sparkParticles) {
-        ctx.strokeStyle = p.color;
-        ctx.globalAlpha = p.life / 20;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - p.vx * 3, p.y - p.vy * 3);
-        ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-
-    for (const p of textParticles) {
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = Math.min(1, p.life / 20);
-        ctx.font = `bold ${p.size}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText(p.text, p.x, p.y);
-        ctx.textAlign = 'left';
-    }
-    ctx.globalAlpha = 1;
-
-    if (flashEffect > 0) {
-        ctx.fillStyle = `rgba(255,255,255,${flashEffect / 20})`;
-        ctx.fillRect(0, 0, 800, 600);
-    }
-
-    drawHUD();
-    if (gameState === 'dead') drawDeathScreen();
-    drawTouchControls();
+    
+    // HUD
+    drawHUD(L);
+    
+    if (gameState === 'dead') drawDeath();
+    
+    drawTouch();
 }
 
 function drawPlatform(p) {
-    const type = p.type || 'stone';
-    let c1, c2, c3;
-    switch (type) {
-        case 'grass': c1 = '#3d5c3d'; c2 = '#2d4c2d'; c3 = '#4d6c4d'; break;
-        case 'stone': c1 = '#555'; c2 = '#444'; c3 = '#666'; break;
-        case 'metal': c1 = '#667788'; c2 = '#556677'; c3 = '#778899'; break;
-        case 'gold': c1 = '#aa8833'; c2 = '#997722'; c3 = '#bbaa44'; break;
-        case 'crystal': c1 = '#4466aa'; c2 = '#335599'; c3 = '#5577bb'; break;
-        default: c1 = '#555'; c2 = '#444'; c3 = '#666';
+    let c1, c2;
+    switch (p.type) {
+        case 'grass': c1 = '#3d5c3d'; c2 = '#4d6c4d'; break;
+        case 'gold': c1 = '#aa8833'; c2 = '#bbaa44'; break;
+        default: c1 = '#555'; c2 = '#666';
     }
     ctx.fillStyle = c1;
     ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.fillStyle = c3;
+    ctx.fillStyle = c2;
     ctx.fillRect(p.x, p.y, p.w, 3);
-    ctx.strokeStyle = c2;
-    ctx.lineWidth = 1;
-    for (let x = p.x; x < p.x + p.w; x += 16) {
-        ctx.beginPath(); ctx.moveTo(x, p.y); ctx.lineTo(x, p.y + p.h); ctx.stroke();
-    }
-    ctx.strokeStyle = '#222';
+    ctx.strokeStyle = '#333';
     ctx.strokeRect(p.x, p.y, p.w, p.h);
-    if (type === 'gold' || type === 'crystal') {
-        const t = gameTime * 0.1;
-        for (let i = 0; i < 3; i++) {
-            ctx.fillStyle = type === 'gold' ? 'rgba(255,255,200,0.8)' : 'rgba(200,220,255,0.8)';
-            ctx.beginPath();
-            ctx.arc(p.x + ((t * 20 + i * p.w / 3) % p.w), p.y + Math.sin(t + i) * 3 + p.h / 2, 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
 }
 
 function drawExit(x, y) {
     const t = gameTime * 0.05;
-    for (let i = 3; i >= 0; i--) {
-        ctx.fillStyle = `rgba(0,${255 - i * 30},${255 - i * 30},${0.2 - i * 0.04})`;
-        ctx.beginPath();
-        ctx.arc(x + 15, y + 18, 20 + i * 8 + Math.sin(t + i) * 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    const glow = Math.sin(t * 2) * 0.3 + 0.7;
-    ctx.fillStyle = `rgba(0,255,255,${glow})`;
-    ctx.shadowColor = '#00ffff';
+    ctx.fillStyle = `rgba(0,255,255,${0.5 + Math.sin(t*2)*0.3})`;
+    ctx.shadowColor = '#0ff';
     ctx.shadowBlur = 15;
     ctx.beginPath();
-    ctx.moveTo(x + 15, y);
-    ctx.lineTo(x + 30, y + 18);
-    ctx.lineTo(x + 22, y + 18);
-    ctx.lineTo(x + 22, y + 36);
-    ctx.lineTo(x + 8, y + 36);
-    ctx.lineTo(x + 8, y + 18);
-    ctx.lineTo(x, y + 18);
+    ctx.moveTo(x+15, y);
+    ctx.lineTo(x+30, y+18);
+    ctx.lineTo(x+22, y+18);
+    ctx.lineTo(x+22, y+36);
+    ctx.lineTo(x+8, y+36);
+    ctx.lineTo(x+8, y+18);
+    ctx.lineTo(x, y+18);
     ctx.closePath();
     ctx.fill();
     ctx.shadowBlur = 0;
 }
 
 function drawPlayer() {
-    const px = player.x, py = player.y, f = player.facing;
-    const bobY = player.onGround ? Math.sin(player.runFrame) * 2 : 0;
+    const px = P.x, py = P.y, f = P.face;
+    const bob = P.onG ? Math.sin(P.run) * 2 : 0;
+    
     ctx.save();
-    ctx.translate(px + player.w / 2, py + player.h / 2);
-    if (player.dashing) { ctx.globalAlpha = 0.8; ctx.scale(1.5, 0.7); }
-    ctx.translate(-(px + player.w / 2), -(py + player.h / 2));
-    if (player.invincible > 0 && Math.floor(player.invincible / 3) % 2 === 0) ctx.globalAlpha = 0.5;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    if (P.dashing) { ctx.globalAlpha = 0.8; ctx.translate(px+P.w/2, py+P.h/2); ctx.scale(1.5, 0.7); ctx.translate(-(px+P.w/2), -(py+P.h/2)); }
+    if (P.inv > 0 && Math.floor(P.inv/3)%2) ctx.globalAlpha = 0.5;
+    
+    // マント
+    ctx.fillStyle = '#c00';
     ctx.beginPath();
-    ctx.ellipse(px + player.w / 2, py + player.h + 2, 8, 3, 0, 0, Math.PI * 2);
+    ctx.moveTo(px+(f>0?2:14), py+6+bob);
+    ctx.quadraticCurveTo(px+(f>0?-8:24), py+12+bob, px+(f>0?-4:20), py+20+bob);
+    ctx.lineTo(px+(f>0?2:14), py+18+bob);
     ctx.fill();
-
-    const cw = Math.sin(gameTime * 0.15) * 3;
-    ctx.fillStyle = '#cc0000';
-    ctx.beginPath();
-    ctx.moveTo(px + (f > 0 ? 2 : 14), py + 6 + bobY);
-    ctx.quadraticCurveTo(px + (f > 0 ? -8 : 24), py + 12 + cw + bobY, px + (f > 0 ? -4 : 20), py + 20 + cw + bobY);
-    ctx.lineTo(px + (f > 0 ? 2 : 14), py + 18 + bobY);
-    ctx.fill();
-
-    ctx.fillStyle = '#ff6688';
-    ctx.fillRect(px + 2, py + 6 + bobY, 12, 10);
-    ctx.fillStyle = '#ffccbb';
-    ctx.fillRect(px + 2, py + bobY, 12, 8);
-    ctx.fillStyle = '#553322';
-    ctx.fillRect(px + 2, py + bobY, 12, 3);
+    
+    // 体
+    ctx.fillStyle = '#f68';
+    ctx.fillRect(px+2, py+6+bob, 12, 10);
+    // 顔
+    ctx.fillStyle = '#fcb';
+    ctx.fillRect(px+2, py+bob, 12, 8);
+    // 髪
+    ctx.fillStyle = '#532';
+    ctx.fillRect(px+2, py+bob, 12, 3);
+    // 目
     ctx.fillStyle = '#fff';
-    ctx.fillRect(px + (f > 0 ? 8 : 4), py + 3 + bobY, 5, 4);
+    ctx.fillRect(px+(f>0?8:4), py+3+bob, 5, 4);
     ctx.fillStyle = '#000';
-    ctx.fillRect(px + (f > 0 ? 10 : 4), py + 4 + bobY, 2, 2);
-
-    const l1 = player.onGround ? Math.sin(player.runFrame) * 3 : 2;
-    const l2 = player.onGround ? Math.sin(player.runFrame + Math.PI) * 3 : -2;
-    ctx.fillStyle = '#4444ff';
-    ctx.fillRect(px + 3 + l1, py + 15 + bobY, 4, 5);
-    ctx.fillRect(px + 9 + l2, py + 15 + bobY, 4, 5);
+    ctx.fillRect(px+(f>0?10:4), py+4+bob, 2, 2);
+    // 足
+    ctx.fillStyle = '#44f';
+    const l1 = P.onG ? Math.sin(P.run)*3 : 2;
+    const l2 = P.onG ? Math.sin(P.run+3.14)*3 : -2;
+    ctx.fillRect(px+3+l1, py+15+bob, 4, 5);
+    ctx.fillRect(px+9+l2, py+15+bob, 4, 5);
+    // 銃
     ctx.fillStyle = '#666';
-    ctx.fillRect(px + (f > 0 ? 12 : -4), py + 9 + bobY, 8, 4);
-
+    ctx.fillRect(px+(f>0?12:-4), py+9+bob, 8, 4);
+    
     ctx.restore();
 }
 
-function getDifficulty(lv) {
-    let r = GAME_CONFIG.difficulties[0];
-    for (const d of GAME_CONFIG.difficulties) if (lv >= d.from) r = d;
-    return r;
-}
-
-function drawHUD() {
-    const lvl = levels[currentLevel];
-    if (!lvl) return;
-    const diff = getDifficulty(currentLevel);
-
-    ctx.fillStyle = '#ff4444';
+function drawHUD(L) {
+    ctx.fillStyle = '#f44';
     ctx.font = 'bold 16px monospace';
-    ctx.fillText('☠', 10, 22);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(` ${deathCount}`, 28, 22);
-
+    ctx.fillText('☠ ' + deathCount, 10, 22);
+    
     ctx.fillStyle = '#aaa';
     ctx.font = '12px monospace';
-    ctx.fillText(`STAGE ${currentLevel + 1}/${levels.length}`, 10, 42);
-
-    ctx.fillStyle = diff.color;
+    ctx.fillText('STAGE ' + (currentLevel+1) + '/' + levels.length, 10, 42);
+    
+    ctx.fillStyle = '#fc0';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText(lvl.name, 10, 60);
-
-    ctx.fillStyle = player.dashCooldown > 0 ? '#444' : '#0ff';
+    ctx.fillText(L.name, 10, 60);
+    
+    // ダッシュゲージ
+    ctx.fillStyle = P.dashCD > 0 ? '#444' : '#0ff';
     ctx.fillRect(740, 10, 50, 8);
-    if (player.dashCooldown > 0) {
-        ctx.fillStyle = '#0ff';
-        ctx.fillRect(740, 10, 50 * (1 - player.dashCooldown / 45), 8);
-    }
+    if (P.dashCD > 0) { ctx.fillStyle = '#0ff'; ctx.fillRect(740, 10, 50*(1-P.dashCD/45), 8); }
     ctx.fillStyle = '#888';
     ctx.font = '10px monospace';
     ctx.fillText('DASH', 740, 30);
-
-    ctx.fillStyle = player.doubleJump ? '#88ff88' : '#444';
+    
+    // 2段ジャンプ
+    ctx.fillStyle = P.dblJump ? '#8f8' : '#444';
     ctx.fillRect(740, 40, 50, 8);
-    ctx.fillStyle = '#888';
     ctx.fillText('2JUMP', 740, 60);
-
-    if (!isTouchDevice) {
-        ctx.fillStyle = '#666';
-        ctx.font = '10px monospace';
-        ctx.fillText('ESC: Options', 740, 80);
-    }
-
-    if (lvl.messages && lvl.messages[0]) {
+    
+    if (L.msg) {
         ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(0, 570, 800, 30);
+        ctx.fillRect(0, 570, GW, 30);
         ctx.fillStyle = '#fff';
         ctx.font = '13px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(lvl.messages[0], 400, 590);
+        ctx.fillText(L.msg, GW/2, 590);
         ctx.textAlign = 'left';
     }
 }
 
-function drawDeathScreen() {
-    ctx.fillStyle = `rgba(80,0,0,${Math.min(0.6, deathTimer / 60)})`;
-    ctx.fillRect(0, 0, 800, 600);
-
+function drawDeath() {
+    ctx.fillStyle = `rgba(80,0,0,${Math.min(0.6, deathTimer/60)})`;
+    ctx.fillRect(0, 0, GW, GH);
+    
     if (deathTimer > 30) {
-        ctx.fillStyle = '#ff0000';
-        ctx.shadowColor = '#ff0000';
+        ctx.fillStyle = '#f00';
+        ctx.shadowColor = '#f00';
         ctx.shadowBlur = 30;
-        ctx.font = 'bold 64px monospace';
+        ctx.font = 'bold 60px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', 400, 250);
+        ctx.fillText('GAME OVER', GW/2, 250);
         ctx.shadowBlur = 0;
-
-        ctx.fillStyle = '#ffaaaa';
+        
+        ctx.fillStyle = '#faa';
         ctx.font = '24px monospace';
-        ctx.fillText(`Death Count: ${deathCount}`, 400, 310);
-
-        if (Math.floor(gameTime / 30) % 2 === 0) {
+        ctx.fillText('Deaths: ' + deathCount, GW/2, 310);
+        
+        if (Math.floor(gameTime/30)%2 === 0) {
             ctx.fillStyle = '#fff';
             ctx.font = '18px monospace';
-            ctx.fillText(isTouchDevice ? 'Tap to retry' : 'Press Z / Space / Enter to retry', 400, 370);
+            ctx.fillText(isMobile ? 'Tap to retry' : 'Press Z/Space to retry', GW/2, 370);
         }
         ctx.textAlign = 'left';
     }
@@ -1050,114 +711,96 @@ function drawDeathScreen() {
 
 function drawTitle() {
     const t = gameTime * 0.02;
-
-    for (let i = 0; i < 30; i++) {
-        ctx.fillStyle = `rgba(255,0,0,${0.1 + Math.sin(t + i) * 0.05})`;
-        ctx.beginPath();
-        ctx.arc(Math.sin(t + i * 0.5) * 400 + 400, Math.cos(t * 0.7 + i * 0.3) * 300 + 300, 3 + Math.sin(t + i) * 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
+    
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ff0000';
-    ctx.shadowColor = '#ff0000';
+    ctx.fillStyle = '#f00';
+    ctx.shadowColor = '#f00';
     ctx.shadowBlur = 30;
-    ctx.font = 'bold 32px monospace';
-    ctx.fillText(GAME_CONFIG.title, 400, 110);
+    ctx.font = 'bold 30px monospace';
+    ctx.fillText('I WANNA BE THE GUY', GW/2, 120);
     ctx.shadowBlur = 0;
-
-    ctx.fillStyle = '#ff6666';
+    
+    ctx.fillStyle = '#f66';
     ctx.font = 'bold 18px monospace';
-    ctx.fillText(GAME_CONFIG.subtitle, 400, 150);
-
+    ctx.fillText('CUSTOM EDITION', GW/2, 155);
+    
     ctx.fillStyle = '#888';
     ctx.font = '12px monospace';
-    ctx.fillText(`${levels.length} STAGES`, 400, 180);
-
-    if (Math.sin(t * 4) > 0) {
+    ctx.fillText(levels.length + ' STAGES', GW/2, 185);
+    
+    if (Math.sin(t*4) > 0) {
         ctx.fillStyle = '#fff';
         ctx.shadowColor = '#fff';
         ctx.shadowBlur = 10;
         ctx.font = 'bold 16px monospace';
-        ctx.fillText(isTouchDevice ? 'TAP TO START' : 'PRESS Z / SPACE / ENTER TO START', 400, 300);
+        ctx.fillText(isMobile ? 'TAP TO START' : 'PRESS Z / SPACE TO START', GW/2, 300);
         ctx.shadowBlur = 0;
     }
-
+    
     ctx.fillStyle = '#888';
     ctx.font = '12px monospace';
-    if (isTouchDevice) {
-        ctx.fillText('Stick: Move | JUMP | DASH', 400, 380);
+    if (isMobile) {
+        ctx.fillText('Stick: Move | JUMP | DASH', GW/2, 400);
     } else {
-        ctx.fillText('Arrow Keys: Move | Z/Space/Up: Jump | X/Shift: Dash', 400, 380);
-        ctx.fillText('R: Restart | Esc: Options', 400, 405);
+        ctx.fillText('Arrow Keys: Move | Z/Space: Jump | X: Dash', GW/2, 400);
+        ctx.fillText('R: Restart | Esc: Options', GW/2, 425);
     }
     ctx.textAlign = 'left';
 }
 
 function drawClear() {
     const t = gameTime * 0.03;
-
-    for (let i = 0; i < 60; i++) {
-        ctx.fillStyle = `hsla(${(t * 50 + i * 20) % 360},100%,50%,0.15)`;
-        ctx.beginPath();
-        ctx.arc(Math.sin(t + i) * 380 + 400, Math.cos(t * 0.8 + i * 0.5) * 280 + 300, 6 + Math.sin(t + i) * 4, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
+    
     for (const p of particles) {
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = Math.min(1, p.life / 30);
+        ctx.fillStyle = p.col;
+        ctx.globalAlpha = Math.min(1, p.life/30);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.size, 0, 6.28);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
-
+    
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffff00';
-    ctx.shadowColor = '#ffff00';
+    ctx.fillStyle = '#ff0';
+    ctx.shadowColor = '#ff0';
     ctx.shadowBlur = 40;
-    ctx.font = 'bold 38px monospace';
-    ctx.fillText('CONGRATULATIONS!', 400, 120);
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText('CONGRATULATIONS!', GW/2, 130);
     ctx.shadowBlur = 0;
-
+    
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 26px monospace';
-    ctx.fillText('YOU ARE THE GUY!', 400, 190);
-
+    ctx.font = 'bold 24px monospace';
+    ctx.fillText('YOU ARE THE GUY!', GW/2, 200);
+    
     ctx.fillStyle = '#aaa';
     ctx.font = '18px monospace';
-    ctx.fillText(`Total Deaths: ${deathCount}`, 400, 250);
-
-    let rank = GAME_CONFIG.ranks[GAME_CONFIG.ranks.length - 1];
-    for (const r of GAME_CONFIG.ranks) {
-        if (deathCount <= r.maxDeaths) { rank = r; break; }
-    }
-
-    ctx.fillStyle = rank.color;
-    ctx.shadowColor = rank.color;
-    ctx.shadowBlur = 20;
+    ctx.fillText('Deaths: ' + deathCount, GW/2, 260);
+    
+    let rank = RANKS[RANKS.length-1];
+    for (const r of RANKS) { if (deathCount <= r.d) { rank = r; break; } }
+    ctx.fillStyle = rank.c;
+    ctx.shadowColor = rank.c;
+    ctx.shadowBlur = 15;
     ctx.font = 'bold 20px monospace';
-    ctx.fillText(`Rank: ${rank.name}`, 400, 310);
+    ctx.fillText('Rank: ' + rank.n, GW/2, 320);
     ctx.shadowBlur = 0;
-
-    if (clearTimer > 60 && Math.sin(t * 4) > 0) {
+    
+    if (clearTimer > 60 && Math.sin(t*4) > 0) {
         ctx.fillStyle = '#fff';
         ctx.font = '16px monospace';
-        ctx.fillText(isTouchDevice ? 'Tap for Title' : 'Press Z / Space / Enter for Title', 400, 400);
+        ctx.fillText(isMobile ? 'Tap for Title' : 'Press Z/Space for Title', GW/2, 420);
     }
     ctx.textAlign = 'left';
 }
 
-function gameLoop() {
+function loop() {
     update();
     draw();
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(loop);
 }
 
-loadKeyBindings();
 resetLevel();
-gameLoop();
+loop();
 </script>
 </body>
 </html>

@@ -29,8 +29,11 @@ canvas#game {
 }
 #touchControls {
     display: none; 
+    position: fixed;
+    bottom: 0;
+    left: 0;
     width: 100%;
-    flex-shrink: 0;
+    z-index: 100;
 }
 #touchCanvas { 
     display: block;
@@ -82,9 +85,6 @@ canvas#game {
 </div>
 
 <script>
-// ============================================================
-//  ENGINE CORE
-// ============================================================
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const touchCanvas = document.getElementById('touchCanvas');
@@ -94,14 +94,12 @@ const gameContainer = document.getElementById('gameContainer');
 const optionsOverlay = document.getElementById('optionsOverlay');
 const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
-// ゲームの論理サイズ（座標系）
 const gameWidth = 800;
 const gameHeight = 600;
 
-// 描画スケール
 let renderScale = 1;
+let touchH = 0;
 
-// --- Screen ---
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const screenW = window.innerWidth;
@@ -109,7 +107,7 @@ function resizeCanvas() {
     const gameRatio = gameWidth / gameHeight;
     
     let availableH = screenH;
-    let touchH = 0;
+    touchH = 0;
     
     if (isTouchDevice) {
         touchH = Math.min(160, Math.floor(screenH * 0.22));
@@ -128,7 +126,6 @@ function resizeCanvas() {
         touchControls.style.display = 'none';
     }
     
-    // 表示サイズを計算（アスペクト比維持）
     let displayW, displayH;
     if (screenW / availableH > gameRatio) {
         displayH = availableH;
@@ -138,13 +135,11 @@ function resizeCanvas() {
         displayH = screenW / gameRatio;
     }
     
-    // キャンバスの実解像度を表示サイズ × dpr に設定（高解像度化）
     canvas.width = Math.floor(displayW * dpr);
     canvas.height = Math.floor(displayH * dpr);
     canvas.style.width = displayW + 'px';
     canvas.style.height = displayH + 'px';
     
-    // 描画スケールを計算（論理座標 → 実際のピクセル）
     renderScale = (displayW * dpr) / gameWidth;
     
     gameContainer.style.height = availableH + 'px';
@@ -152,23 +147,22 @@ function resizeCanvas() {
 
 function updateTouchConfig(height, width) {
     const scale = height / 160;
-    stickConfig.x = 80 * scale + 20;
+    stickConfig.x = 90 * scale + 20;
     stickConfig.y = height / 2;
-    stickConfig.baseRadius = 50 * scale;
-    stickConfig.stickRadius = 28 * scale;
-    stickConfig.maxDist = 40 * scale;
-    buttonConfig.jump.radius = 38 * scale;
-    buttonConfig.dash.radius = 30 * scale;
+    stickConfig.baseRadius = 55 * scale;
+    stickConfig.stickRadius = 30 * scale;
+    stickConfig.maxDist = 45 * scale;
+    buttonConfig.jump.radius = 42 * scale;
+    buttonConfig.dash.radius = 34 * scale;
     buttonConfig.jump.y = height / 2;
     buttonConfig.dash.y = height / 2;
-    buttonConfig.jump.x = width - 80 * scale;
-    buttonConfig.dash.x = width - 170 * scale;
+    buttonConfig.jump.x = width - 85 * scale;
+    buttonConfig.dash.x = width - 180 * scale;
 }
 
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// --- Key Bindings ---
 const defaultKeyBindings = {
     left:'ArrowLeft', right:'ArrowRight',
     jump:'Space', jump2:'KeyZ', jump3:'ArrowUp',
@@ -176,6 +170,7 @@ const defaultKeyBindings = {
     restart:'KeyR', confirm:'Enter'
 };
 let keyBindings = { ...defaultKeyBindings };
+
 function loadKeyBindings() {
     const s = localStorage.getItem('iwbtg_keybindings');
     if (s) { try { keyBindings = { ...defaultKeyBindings, ...JSON.parse(s) }; } catch(e) { keyBindings = { ...defaultKeyBindings }; } }
@@ -190,7 +185,6 @@ function updateKeyButtons() {
 }
 function formatKeyName(c) { return c.replace('Key','').replace('Arrow','').replace('Shift','Shift ').replace('Left','L').replace('Right','R'); }
 
-// --- Options ---
 let listeningButton = null;
 function openOptions() { optionsOverlay.style.display = 'block'; gameState = 'options'; }
 function closeOptions() {
@@ -212,65 +206,90 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// --- Touch ---
-const touchState = { stick:{ active:false, id:null, x:0, y:0, dx:0, dy:0 }, jump:false, dash:false };
-const stickConfig = { x:100, y:80, baseRadius:50, stickRadius:28, maxDist:40 };
+const touchState = { 
+    stick: { active: false, id: null, dx: 0, dy: 0 }, 
+    jump: false, 
+    dash: false,
+    jumpId: null,
+    dashId: null
+};
+const stickConfig = { x: 100, y: 80, baseRadius: 55, stickRadius: 30, maxDist: 45 };
 const buttonConfig = {
-    jump:{ x:0, y:80, radius:38, label:'JUMP', color:'#00aa00' },
-    dash:{ x:0, y:80, radius:30, label:'DASH', color:'#0088ff' }
+    jump: { x: 0, y: 80, radius: 42, label: 'JUMP', color: '#00aa00' },
+    dash: { x: 0, y: 80, radius: 34, label: 'DASH', color: '#0088ff' }
 };
 
 function handleTouchStart(e) {
-    e.preventDefault(); 
-    const rect = touchCanvas.getBoundingClientRect();
+    e.preventDefault();
+    e.stopPropagation();
+    
     for (let t of e.changedTouches) {
+        const rect = touchCanvas.getBoundingClientRect();
         const x = t.clientX - rect.left;
         const y = t.clientY - rect.top;
-        if (Math.sqrt((x-stickConfig.x)**2+(y-stickConfig.y)**2) < stickConfig.baseRadius && !touchState.stick.active) { 
-            touchState.stick.active = true; 
-            touchState.stick.id = t.identifier; 
-            updateStickDelta(x, y); 
+        
+        // スティック判定
+        const stickDist = Math.sqrt((x - stickConfig.x) ** 2 + (y - stickConfig.y) ** 2);
+        if (stickDist < stickConfig.baseRadius * 1.3 && !touchState.stick.active) {
+            touchState.stick.active = true;
+            touchState.stick.id = t.identifier;
+            updateStickDelta(x, y);
         }
-        if (Math.sqrt((x-buttonConfig.jump.x)**2+(y-buttonConfig.jump.y)**2) < buttonConfig.jump.radius) touchState.jump = true;
-        if (Math.sqrt((x-buttonConfig.dash.x)**2+(y-buttonConfig.dash.y)**2) < buttonConfig.dash.radius) touchState.dash = true;
+        
+        // ジャンプボタン判定
+        const jumpDist = Math.sqrt((x - buttonConfig.jump.x) ** 2 + (y - buttonConfig.jump.y) ** 2);
+        if (jumpDist < buttonConfig.jump.radius * 1.3) {
+            touchState.jump = true;
+            touchState.jumpId = t.identifier;
+        }
+        
+        // ダッシュボタン判定
+        const dashDist = Math.sqrt((x - buttonConfig.dash.x) ** 2 + (y - buttonConfig.dash.y) ** 2);
+        if (dashDist < buttonConfig.dash.radius * 1.3) {
+            touchState.dash = true;
+            touchState.dashId = t.identifier;
+        }
     }
 }
+
 function handleTouchMove(e) {
-    e.preventDefault(); 
-    const rect = touchCanvas.getBoundingClientRect();
-    for (let t of e.changedTouches) { 
+    e.preventDefault();
+    e.stopPropagation();
+    
+    for (let t of e.changedTouches) {
         if (t.identifier === touchState.stick.id) {
-            updateStickDelta(t.clientX - rect.left, t.clientY - rect.top); 
+            const rect = touchCanvas.getBoundingClientRect();
+            updateStickDelta(t.clientX - rect.left, t.clientY - rect.top);
         }
     }
 }
+
 function handleTouchEnd(e) {
     e.preventDefault();
-    for (let t of e.changedTouches) { 
-        if (t.identifier === touchState.stick.id) { 
-            touchState.stick.active = false; 
-            touchState.stick.id = null; 
-            touchState.stick.dx = 0; 
-            touchState.stick.dy = 0; 
-        } 
-    }
-    if (e.touches.length === 0) { 
-        touchState.jump = false; 
-        touchState.dash = false; 
-    } else { 
-        const rect = touchCanvas.getBoundingClientRect(); 
-        for (let t of e.changedTouches) {
-            const x = t.clientX - rect.left;
-            const y = t.clientY - rect.top;
-            if (Math.sqrt((x-buttonConfig.jump.x)**2+(y-buttonConfig.jump.y)**2) < buttonConfig.jump.radius + 20) touchState.jump = false;
-            if (Math.sqrt((x-buttonConfig.dash.x)**2+(y-buttonConfig.dash.y)**2) < buttonConfig.dash.radius + 20) touchState.dash = false;
+    e.stopPropagation();
+    
+    for (let t of e.changedTouches) {
+        if (t.identifier === touchState.stick.id) {
+            touchState.stick.active = false;
+            touchState.stick.id = null;
+            touchState.stick.dx = 0;
+            touchState.stick.dy = 0;
+        }
+        if (t.identifier === touchState.jumpId) {
+            touchState.jump = false;
+            touchState.jumpId = null;
+        }
+        if (t.identifier === touchState.dashId) {
+            touchState.dash = false;
+            touchState.dashId = null;
         }
     }
 }
+
 function updateStickDelta(x, y) {
     let dx = x - stickConfig.x;
     let dy = y - stickConfig.y;
-    const d = Math.sqrt(dx*dx + dy*dy);
+    const d = Math.sqrt(dx * dx + dy * dy);
     if (d > stickConfig.maxDist) {
         dx = (dx / d) * stickConfig.maxDist;
         dy = (dy / d) * stickConfig.maxDist;
@@ -278,11 +297,12 @@ function updateStickDelta(x, y) {
     touchState.stick.dx = dx / stickConfig.maxDist;
     touchState.stick.dy = dy / stickConfig.maxDist;
 }
+
 if (isTouchDevice) {
-    touchCanvas.addEventListener('touchstart', handleTouchStart, {passive:false});
-    touchCanvas.addEventListener('touchmove', handleTouchMove, {passive:false});
-    touchCanvas.addEventListener('touchend', handleTouchEnd, {passive:false});
-    touchCanvas.addEventListener('touchcancel', handleTouchEnd, {passive:false});
+    touchCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    touchCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    touchCanvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    touchCanvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 }
 
 function drawTouchControls() {
@@ -307,35 +327,37 @@ function drawTouchControls() {
     touchCtx.lineTo(w, 1);
     touchCtx.stroke();
     
+    // スティックベース
     const g = touchCtx.createRadialGradient(stickConfig.x, stickConfig.y, 0, stickConfig.x, stickConfig.y, stickConfig.baseRadius);
     g.addColorStop(0, '#3a3a4a');
     g.addColorStop(0.7, '#2a2a3a');
     g.addColorStop(1, '#1a1a2a');
     touchCtx.beginPath();
-    touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI*2);
+    touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI * 2);
     touchCtx.fillStyle = g;
     touchCtx.fill();
-    touchCtx.strokeStyle = '#4a4a5a';
-    touchCtx.lineWidth = 2;
+    touchCtx.strokeStyle = touchState.stick.active ? '#6a6a7a' : '#4a4a5a';
+    touchCtx.lineWidth = 3;
     touchCtx.stroke();
     
+    // スティックノブ
     const kx = stickConfig.x + touchState.stick.dx * stickConfig.maxDist;
     const ky = stickConfig.y + touchState.stick.dy * stickConfig.maxDist;
     
     touchCtx.beginPath();
-    touchCtx.arc(kx + 2, ky + 2, stickConfig.stickRadius, 0, Math.PI*2);
+    touchCtx.arc(kx + 2, ky + 2, stickConfig.stickRadius, 0, Math.PI * 2);
     touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
     touchCtx.fill();
     
     const kg = touchCtx.createRadialGradient(kx - 8, ky - 8, 0, kx, ky, stickConfig.stickRadius);
-    kg.addColorStop(0, '#888');
-    kg.addColorStop(0.5, '#666');
-    kg.addColorStop(1, '#444');
+    kg.addColorStop(0, touchState.stick.active ? '#aaa' : '#888');
+    kg.addColorStop(0.5, touchState.stick.active ? '#888' : '#666');
+    kg.addColorStop(1, touchState.stick.active ? '#666' : '#444');
     touchCtx.beginPath();
-    touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI*2);
+    touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI * 2);
     touchCtx.fillStyle = kg;
     touchCtx.fill();
-    touchCtx.strokeStyle = touchState.stick.active ? '#aaa' : '#555';
+    touchCtx.strokeStyle = touchState.stick.active ? '#bbb' : '#555';
     touchCtx.lineWidth = 2;
     touchCtx.stroke();
     
@@ -344,28 +366,28 @@ function drawTouchControls() {
 }
 
 function drawTouchButton(cfg, pressed) {
-    const {x, y, radius: r, label, color} = cfg;
+    const { x, y, radius: r, label, color } = cfg;
     
     touchCtx.beginPath();
-    touchCtx.arc(x + 2, y + 2, r, 0, Math.PI*2);
+    touchCtx.arc(x + 2, y + 2, r, 0, Math.PI * 2);
     touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
     touchCtx.fill();
     
-    const g = touchCtx.createRadialGradient(x - r/3, y - r/3, 0, x, y, r);
+    const g = touchCtx.createRadialGradient(x - r / 3, y - r / 3, 0, x, y, r);
     if (pressed) {
-        g.addColorStop(0, color);
-        g.addColorStop(1, darkenColor(color, 40));
+        g.addColorStop(0, lightenColor(color, 30));
+        g.addColorStop(1, darkenColor(color, 20));
     } else {
         g.addColorStop(0, lightenColor(color, 20));
         g.addColorStop(0.7, color);
         g.addColorStop(1, darkenColor(color, 20));
     }
     touchCtx.beginPath();
-    touchCtx.arc(x, y, r, 0, Math.PI*2);
+    touchCtx.arc(x, y, r, 0, Math.PI * 2);
     touchCtx.fillStyle = g;
     touchCtx.fill();
     touchCtx.strokeStyle = pressed ? '#fff' : '#666';
-    touchCtx.lineWidth = 2;
+    touchCtx.lineWidth = pressed ? 4 : 2;
     touchCtx.stroke();
     
     touchCtx.fillStyle = pressed ? '#fff' : '#eee';
@@ -376,17 +398,16 @@ function drawTouchButton(cfg, pressed) {
 }
 
 function lightenColor(c, p) {
-    const n = parseInt(c.replace('#',''), 16);
+    const n = parseInt(c.replace('#', ''), 16);
     const a = Math.round(2.55 * p);
-    return '#' + (0x1000000 + Math.min(255, (n>>16) + a) * 0x10000 + Math.min(255, ((n>>8)&0xFF) + a) * 0x100 + Math.min(255, (n&0xFF) + a)).toString(16).slice(1);
+    return '#' + (0x1000000 + Math.min(255, (n >> 16) + a) * 0x10000 + Math.min(255, ((n >> 8) & 0xFF) + a) * 0x100 + Math.min(255, (n & 0xFF) + a)).toString(16).slice(1);
 }
 function darkenColor(c, p) {
-    const n = parseInt(c.replace('#',''), 16);
+    const n = parseInt(c.replace('#', ''), 16);
     const a = Math.round(2.55 * p);
-    return '#' + (0x1000000 + Math.max(0, (n>>16) - a) * 0x10000 + Math.max(0, ((n>>8)&0xFF) - a) * 0x100 + Math.max(0, (n&0xFF) - a)).toString(16).slice(1);
+    return '#' + (0x1000000 + Math.max(0, (n >> 16) - a) * 0x10000 + Math.max(0, ((n >> 8) & 0xFF) - a) * 0x100 + Math.max(0, (n & 0xFF) - a)).toString(16).slice(1);
 }
 
-// --- Game State ---
 let gameState = 'title';
 let deathCount = 0;
 let currentLevel = 0;
@@ -427,7 +448,6 @@ let keysPressed = {};
 let prevTouchJump = false;
 let prevTouchDash = false;
 
-// --- Input ---
 document.addEventListener('keydown', e => {
     if (listeningButton) return;
     if (!keys[e.code]) keysPressed[e.code] = true;
@@ -456,11 +476,11 @@ if (isTouchDevice) {
         if (gameState === 'title') { gameState = 'playing'; resetLevel(); }
         else if (gameState === 'dead' && deathTimer > 30) { gameState = 'playing'; resetLevel(); }
         else if (gameState === 'clear' && clearTimer > 60) { gameState = 'title'; currentLevel = 0; deathCount = 0; }
-    });
+    }, { passive: true });
 }
 
 function isActionPressed(a) {
-    switch(a) {
+    switch (a) {
         case 'left': return (isTouchDevice && touchState.stick.dx < -0.3) || keys[keyBindings.left];
         case 'right': return (isTouchDevice && touchState.stick.dx > 0.3) || keys[keyBindings.right];
         case 'jump': return (isTouchDevice && touchState.jump) || keys[keyBindings.jump] || keys[keyBindings.jump2] || keys[keyBindings.jump3];
@@ -469,7 +489,7 @@ function isActionPressed(a) {
     return false;
 }
 function isActionJustPressed(a) {
-    switch(a) {
+    switch (a) {
         case 'dash':
             if (isTouchDevice && touchState.dash && !prevTouchDash) return true;
             return keysPressed[keyBindings.dash] || keysPressed[keyBindings.dash2];
@@ -481,9 +501,6 @@ function isActionJustPressed(a) {
 }
 function clearKeysPressed() { keysPressed = {}; }
 
-// ============================================================
-//  STAGE DATA
-// ============================================================
 const levels = [
     {
         name: "SAMPLE STAGE",
@@ -500,9 +517,6 @@ const levels = [
     },
 ];
 
-// ============================================================
-//  CONFIG
-// ============================================================
 const GAME_CONFIG = {
     title: "I WANNA BE THE GUY",
     subtitle: "CUSTOM EDITION",
@@ -519,9 +533,6 @@ const GAME_CONFIG = {
     ],
 };
 
-// ============================================================
-//  LEVEL RESET
-// ============================================================
 function resetLevel() {
     const lvl = levels[currentLevel];
     if (!lvl) return;
@@ -549,10 +560,7 @@ function resetLevel() {
     prevTouchDash = false;
 }
 
-// ============================================================
-//  EFFECTS
-// ============================================================
-function createExplosion(x, y, count = 30, colors = ['#ff4400','#ff8800','#ffcc00']) {
+function createExplosion(x, y, count = 30, colors = ['#ff4400', '#ff8800', '#ffcc00']) {
     for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = Math.random() * 8 + 2;
@@ -566,7 +574,6 @@ function createExplosion(x, y, count = 30, colors = ['#ff4400','#ff8800','#ffcc0
             gravity: 0.2
         });
     }
-    screenShake = Math.max(screenShake, 15);
     flashEffect = 10;
 }
 
@@ -578,7 +585,6 @@ function killPlayer() {
     if (player.dead || player.invincible > 0) return;
     player.dead = true;
     deathCount++;
-    screenShake = 25;
     deathTimer = 0;
     gameState = 'dead';
     slowMotion = 0.3;
@@ -586,8 +592,8 @@ function killPlayer() {
         const a = Math.random() * Math.PI * 2;
         const s = Math.random() * 15 + 3;
         bloodParticles.push({
-            x: player.x + player.w/2,
-            y: player.y + player.h/2,
+            x: player.x + player.w / 2,
+            y: player.y + player.h / 2,
             vx: Math.cos(a) * s,
             vy: Math.sin(a) * s - 5,
             life: 80 + Math.random() * 80,
@@ -598,8 +604,8 @@ function killPlayer() {
     }
     for (let i = 0; i < 20; i++) {
         sparkParticles.push({
-            x: player.x + player.w/2,
-            y: player.y + player.h/2,
+            x: player.x + player.w / 2,
+            y: player.y + player.h / 2,
             vx: (Math.random() - 0.5) * 20,
             vy: (Math.random() - 0.5) * 20,
             life: 20 + Math.random() * 20,
@@ -609,19 +615,16 @@ function killPlayer() {
     createTextParticle(player.x, player.y - 20, 'DEAD!', '#ff0000');
 }
 
-// ============================================================
-//  COLLISION
-// ============================================================
 function rectCollision(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-// ============================================================
-//  UPDATE
-// ============================================================
 function update() {
     gameTime++;
     if (slowMotion < 1) slowMotion = Math.min(1, slowMotion + 0.02);
+    if (screenShake > 0) screenShake *= 0.9;
+    if (flashEffect > 0) flashEffect--;
+    
     if (gameState === 'dead') { deathTimer++; updateParticles(); return; }
     if (gameState === 'clear') { clearTimer++; updateParticles(); return; }
     if (gameState !== 'playing') return;
@@ -631,8 +634,8 @@ function update() {
 
     if (Math.abs(player.vx) > 0 || Math.abs(player.vy) > 2) {
         trailParticles.push({
-            x: player.x + player.w/2,
-            y: player.y + player.h/2,
+            x: player.x + player.w / 2,
+            y: player.y + player.h / 2,
             size: player.dashing ? 8 : 4,
             life: player.dashing ? 15 : 8,
             color: player.dashing ? '#00ffff' : '#ffffff44'
@@ -657,8 +660,8 @@ function update() {
         player.invincible = 10;
         for (let i = 0; i < 10; i++) {
             particles.push({
-                x: player.x + player.w/2,
-                y: player.y + player.h/2,
+                x: player.x + player.w / 2,
+                y: player.y + player.h / 2,
                 vx: -player.facing * (Math.random() * 5 + 2),
                 vy: (Math.random() - 0.5) * 3,
                 life: 15,
@@ -683,7 +686,7 @@ function update() {
             player.onGround = false;
             for (let i = 0; i < 5; i++) {
                 particles.push({
-                    x: player.x + player.w/2 + (Math.random() - 0.5) * 10,
+                    x: player.x + player.w / 2 + (Math.random() - 0.5) * 10,
                     y: player.y + player.h,
                     vx: (Math.random() - 0.5) * 3,
                     vy: Math.random() * 2,
@@ -699,8 +702,8 @@ function update() {
             for (let i = 0; i < 8; i++) {
                 const a = (i / 8) * Math.PI * 2;
                 particles.push({
-                    x: player.x + player.w/2,
-                    y: player.y + player.h/2,
+                    x: player.x + player.w / 2,
+                    y: player.y + player.h / 2,
                     vx: Math.cos(a) * 3,
                     vy: Math.sin(a) * 3,
                     life: 20,
@@ -761,13 +764,13 @@ function update() {
             clearTimer = 0;
             for (let i = 0; i < 200; i++) {
                 particles.push({
-                    x: player.x + player.w/2,
-                    y: player.y + player.h/2,
+                    x: player.x + player.w / 2,
+                    y: player.y + player.h / 2,
                     vx: (Math.random() - 0.5) * 20,
                     vy: (Math.random() - 0.5) * 20,
                     life: 150 + Math.random() * 100,
                     size: 2 + Math.random() * 8,
-                    color: ['#ff0','#0ff','#f0f','#0f0','#f80','#fff'][Math.floor(Math.random() * 6)],
+                    color: ['#ff0', '#0ff', '#f0f', '#0f0', '#f80', '#fff'][Math.floor(Math.random() * 6)],
                     gravity: 0.03
                 });
             }
@@ -776,8 +779,6 @@ function update() {
         }
     }
 
-    if (screenShake > 0) screenShake *= 0.9;
-    if (flashEffect > 0) flashEffect--;
     updateParticles();
     prevTouchJump = touchState.jump;
     prevTouchDash = touchState.dash;
@@ -831,14 +832,11 @@ function updateParticles() {
     }
 }
 
-// ============================================================
-//  DRAW
-// ============================================================
 function draw() {
-    // スケール変換を適用
     ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     
-    if (screenShake > 0.5) {
+    // プレイ中のみ画面を揺らす
+    if (screenShake > 0.5 && gameState === 'playing') {
         ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
     }
 
@@ -886,7 +884,7 @@ function draw() {
     for (const p of bloodParticles) {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = Math.min(1, p.life / 30);
-        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
     ctx.globalAlpha = 1;
 
@@ -933,9 +931,6 @@ function draw() {
     drawTouchControls();
 }
 
-// ============================================================
-//  DRAW HELPERS
-// ============================================================
 function drawPlatform(p) {
     const type = p.type || 'stone';
     let c1, c2, c3;
@@ -1113,7 +1108,6 @@ function drawDeathScreen() {
     if (deathTimer > 30) {
         ctx.save();
         ctx.translate(400, 250);
-        ctx.rotate(Math.sin(gameTime * 0.1) * 0.02);
         ctx.fillStyle = '#ff0000';
         ctx.shadowColor = '#ff0000';
         ctx.shadowBlur = 30;
@@ -1254,9 +1248,6 @@ function drawClear() {
     ctx.textAlign = 'left';
 }
 
-// ============================================================
-//  GAME LOOP
-// ============================================================
 function gameLoop() {
     update();
     draw();

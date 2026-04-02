@@ -11,29 +11,26 @@ body {
     overflow: hidden; 
     display: flex; 
     flex-direction: column;
-    justify-content: center; 
-    align-items: center; 
     height: 100vh; 
+    height: 100dvh;
     width: 100vw; 
     touch-action: none; 
 }
 #gameContainer {
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    flex: 1;
-    width: 100%;
+    overflow: hidden;
 }
 canvas#game { 
     display: block;
 }
 #touchControls {
-    display: none; 
-    position: fixed;
-    bottom: 0;
-    left: 0;
+    display: none;
     width: 100%;
-    z-index: 100;
+    flex-shrink: 0;
+    background: #0f0f1a;
 }
 #touchCanvas { 
     display: block;
@@ -47,7 +44,7 @@ canvas#game {
 #optionsContent h2 { color: #ff4444; margin-bottom: 20px; text-align: center; }
 .key-row { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 10px; background: #222; border-radius: 5px; }
 .key-row label { color: #aaa; }
-.key-btn { background: #444; color: #fff; border: 2px solid #666; padding: 10px 20px; min-width: 120px; cursor: pointer; font-family: monospace; font-size: 14px; border-radius: 5px; transition: all 0.2s; }
+.key-btn { background: #444; color: #fff; border: 2px solid #666; padding: 10px 20px; min-width: 120px; cursor: pointer; font-family: monospace; font-size: 14px; border-radius: 5px; }
 .key-btn:hover { background: #555; border-color: #888; }
 .key-btn.listening { background: #ff4444; border-color: #ff6666; animation: pulse 0.5s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
@@ -99,10 +96,11 @@ const gameHeight = 600;
 
 let renderScale = 1;
 let touchH = 0;
+let screenW = 0;
 
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    const screenW = window.innerWidth;
+    screenW = window.innerWidth;
     const screenH = window.innerHeight;
     const gameRatio = gameWidth / gameHeight;
     
@@ -110,18 +108,18 @@ function resizeCanvas() {
     touchH = 0;
     
     if (isTouchDevice) {
-        touchH = Math.min(160, Math.floor(screenH * 0.22));
+        touchH = Math.min(150, Math.floor(screenH * 0.2));
         availableH = screenH - touchH;
         touchControls.style.display = 'block';
         touchControls.style.height = touchH + 'px';
         
-        touchCanvas.width = screenW * dpr;
-        touchCanvas.height = touchH * dpr;
+        touchCanvas.width = Math.floor(screenW * dpr);
+        touchCanvas.height = Math.floor(touchH * dpr);
         touchCanvas.style.width = screenW + 'px';
         touchCanvas.style.height = touchH + 'px';
         touchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         
-        updateTouchConfig(touchH, screenW);
+        updateTouchConfig();
     } else {
         touchControls.style.display = 'none';
     }
@@ -129,10 +127,10 @@ function resizeCanvas() {
     let displayW, displayH;
     if (screenW / availableH > gameRatio) {
         displayH = availableH;
-        displayW = availableH * gameRatio;
+        displayW = Math.floor(availableH * gameRatio);
     } else {
         displayW = screenW;
-        displayH = screenW / gameRatio;
+        displayH = Math.floor(screenW / gameRatio);
     }
     
     canvas.width = Math.floor(displayW * dpr);
@@ -140,24 +138,25 @@ function resizeCanvas() {
     canvas.style.width = displayW + 'px';
     canvas.style.height = displayH + 'px';
     
-    renderScale = (displayW * dpr) / gameWidth;
+    renderScale = canvas.width / gameWidth;
     
     gameContainer.style.height = availableH + 'px';
 }
 
-function updateTouchConfig(height, width) {
-    const scale = height / 160;
-    stickConfig.x = 90 * scale + 20;
-    stickConfig.y = height / 2;
-    stickConfig.baseRadius = 55 * scale;
-    stickConfig.stickRadius = 30 * scale;
-    stickConfig.maxDist = 45 * scale;
-    buttonConfig.jump.radius = 42 * scale;
-    buttonConfig.dash.radius = 34 * scale;
-    buttonConfig.jump.y = height / 2;
-    buttonConfig.dash.y = height / 2;
-    buttonConfig.jump.x = width - 85 * scale;
-    buttonConfig.dash.x = width - 180 * scale;
+function updateTouchConfig() {
+    const scale = touchH / 150;
+    stickConfig.baseRadius = 50 * scale;
+    stickConfig.stickRadius = 28 * scale;
+    stickConfig.maxDist = 40 * scale;
+    stickConfig.x = stickConfig.baseRadius + 25;
+    stickConfig.y = touchH / 2;
+    
+    buttonConfig.jump.radius = 40 * scale;
+    buttonConfig.dash.radius = 32 * scale;
+    buttonConfig.jump.x = screenW - buttonConfig.jump.radius - 25;
+    buttonConfig.dash.x = screenW - buttonConfig.jump.radius * 2 - buttonConfig.dash.radius - 50;
+    buttonConfig.jump.y = touchH / 2;
+    buttonConfig.dash.y = touchH / 2;
 }
 
 resizeCanvas();
@@ -207,86 +206,82 @@ document.addEventListener('keydown', function(e) {
 });
 
 const touchState = { 
-    stick: { active: false, id: null, dx: 0, dy: 0 }, 
+    left: false,
+    right: false,
     jump: false, 
-    dash: false,
-    jumpId: null,
-    dashId: null
+    dash: false
 };
-const stickConfig = { x: 100, y: 80, baseRadius: 55, stickRadius: 30, maxDist: 45 };
+const activeTouches = {};
+
+const stickConfig = { x: 100, y: 75, baseRadius: 50, stickRadius: 28, maxDist: 40, currentX: 0, currentY: 0 };
 const buttonConfig = {
-    jump: { x: 0, y: 80, radius: 42, label: 'JUMP', color: '#00aa00' },
-    dash: { x: 0, y: 80, radius: 34, label: 'DASH', color: '#0088ff' }
+    jump: { x: 300, y: 75, radius: 40, label: 'JUMP', color: '#00aa00' },
+    dash: { x: 200, y: 75, radius: 32, label: 'DASH', color: '#0088ff' }
 };
 
 function handleTouchStart(e) {
     e.preventDefault();
-    e.stopPropagation();
-    
     for (let t of e.changedTouches) {
-        const rect = touchCanvas.getBoundingClientRect();
-        const x = t.clientX - rect.left;
-        const y = t.clientY - rect.top;
+        const x = t.clientX;
+        const y = t.clientY - (window.innerHeight - touchH);
         
-        // スティック判定
+        activeTouches[t.identifier] = { x, y, type: null };
+        
         const stickDist = Math.sqrt((x - stickConfig.x) ** 2 + (y - stickConfig.y) ** 2);
-        if (stickDist < stickConfig.baseRadius * 1.3 && !touchState.stick.active) {
-            touchState.stick.active = true;
-            touchState.stick.id = t.identifier;
-            updateStickDelta(x, y);
+        if (stickDist < stickConfig.baseRadius * 1.5) {
+            activeTouches[t.identifier].type = 'stick';
+            updateStick(x, y);
+            continue;
         }
         
-        // ジャンプボタン判定
         const jumpDist = Math.sqrt((x - buttonConfig.jump.x) ** 2 + (y - buttonConfig.jump.y) ** 2);
-        if (jumpDist < buttonConfig.jump.radius * 1.3) {
+        if (jumpDist < buttonConfig.jump.radius * 1.5) {
+            activeTouches[t.identifier].type = 'jump';
             touchState.jump = true;
-            touchState.jumpId = t.identifier;
+            continue;
         }
         
-        // ダッシュボタン判定
         const dashDist = Math.sqrt((x - buttonConfig.dash.x) ** 2 + (y - buttonConfig.dash.y) ** 2);
-        if (dashDist < buttonConfig.dash.radius * 1.3) {
+        if (dashDist < buttonConfig.dash.radius * 1.5) {
+            activeTouches[t.identifier].type = 'dash';
             touchState.dash = true;
-            touchState.dashId = t.identifier;
         }
     }
 }
 
 function handleTouchMove(e) {
     e.preventDefault();
-    e.stopPropagation();
-    
     for (let t of e.changedTouches) {
-        if (t.identifier === touchState.stick.id) {
-            const rect = touchCanvas.getBoundingClientRect();
-            updateStickDelta(t.clientX - rect.left, t.clientY - rect.top);
+        const touch = activeTouches[t.identifier];
+        if (touch && touch.type === 'stick') {
+            const x = t.clientX;
+            const y = t.clientY - (window.innerHeight - touchH);
+            updateStick(x, y);
         }
     }
 }
 
 function handleTouchEnd(e) {
     e.preventDefault();
-    e.stopPropagation();
-    
     for (let t of e.changedTouches) {
-        if (t.identifier === touchState.stick.id) {
-            touchState.stick.active = false;
-            touchState.stick.id = null;
-            touchState.stick.dx = 0;
-            touchState.stick.dy = 0;
-        }
-        if (t.identifier === touchState.jumpId) {
-            touchState.jump = false;
-            touchState.jumpId = null;
-        }
-        if (t.identifier === touchState.dashId) {
-            touchState.dash = false;
-            touchState.dashId = null;
+        const touch = activeTouches[t.identifier];
+        if (touch) {
+            if (touch.type === 'stick') {
+                touchState.left = false;
+                touchState.right = false;
+                stickConfig.currentX = 0;
+                stickConfig.currentY = 0;
+            } else if (touch.type === 'jump') {
+                touchState.jump = false;
+            } else if (touch.type === 'dash') {
+                touchState.dash = false;
+            }
+            delete activeTouches[t.identifier];
         }
     }
 }
 
-function updateStickDelta(x, y) {
+function updateStick(x, y) {
     let dx = x - stickConfig.x;
     let dy = y - stickConfig.y;
     const d = Math.sqrt(dx * dx + dy * dy);
@@ -294,8 +289,12 @@ function updateStickDelta(x, y) {
         dx = (dx / d) * stickConfig.maxDist;
         dy = (dy / d) * stickConfig.maxDist;
     }
-    touchState.stick.dx = dx / stickConfig.maxDist;
-    touchState.stick.dy = dy / stickConfig.maxDist;
+    stickConfig.currentX = dx;
+    stickConfig.currentY = dy;
+    
+    const normalized = dx / stickConfig.maxDist;
+    touchState.left = normalized < -0.3;
+    touchState.right = normalized > 0.3;
 }
 
 if (isTouchDevice) {
@@ -314,12 +313,8 @@ function drawTouchControls() {
     
     touchCtx.clearRect(0, 0, w, h);
     
-    const bgGrad = touchCtx.createLinearGradient(0, 0, 0, h);
-    bgGrad.addColorStop(0, '#1a1a2e');
-    bgGrad.addColorStop(1, '#0f0f1a');
-    touchCtx.fillStyle = bgGrad;
+    touchCtx.fillStyle = '#1a1a2e';
     touchCtx.fillRect(0, 0, w, h);
-    
     touchCtx.strokeStyle = '#333';
     touchCtx.lineWidth = 2;
     touchCtx.beginPath();
@@ -327,37 +322,22 @@ function drawTouchControls() {
     touchCtx.lineTo(w, 1);
     touchCtx.stroke();
     
-    // スティックベース
-    const g = touchCtx.createRadialGradient(stickConfig.x, stickConfig.y, 0, stickConfig.x, stickConfig.y, stickConfig.baseRadius);
-    g.addColorStop(0, '#3a3a4a');
-    g.addColorStop(0.7, '#2a2a3a');
-    g.addColorStop(1, '#1a1a2a');
+    // スティック
     touchCtx.beginPath();
     touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = g;
+    touchCtx.fillStyle = '#2a2a3a';
     touchCtx.fill();
-    touchCtx.strokeStyle = touchState.stick.active ? '#6a6a7a' : '#4a4a5a';
+    touchCtx.strokeStyle = '#4a4a5a';
     touchCtx.lineWidth = 3;
     touchCtx.stroke();
     
-    // スティックノブ
-    const kx = stickConfig.x + touchState.stick.dx * stickConfig.maxDist;
-    const ky = stickConfig.y + touchState.stick.dy * stickConfig.maxDist;
-    
-    touchCtx.beginPath();
-    touchCtx.arc(kx + 2, ky + 2, stickConfig.stickRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
-    touchCtx.fill();
-    
-    const kg = touchCtx.createRadialGradient(kx - 8, ky - 8, 0, kx, ky, stickConfig.stickRadius);
-    kg.addColorStop(0, touchState.stick.active ? '#aaa' : '#888');
-    kg.addColorStop(0.5, touchState.stick.active ? '#888' : '#666');
-    kg.addColorStop(1, touchState.stick.active ? '#666' : '#444');
+    const kx = stickConfig.x + stickConfig.currentX;
+    const ky = stickConfig.y + stickConfig.currentY;
     touchCtx.beginPath();
     touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = kg;
+    touchCtx.fillStyle = (touchState.left || touchState.right) ? '#888' : '#666';
     touchCtx.fill();
-    touchCtx.strokeStyle = touchState.stick.active ? '#bbb' : '#555';
+    touchCtx.strokeStyle = '#999';
     touchCtx.lineWidth = 2;
     touchCtx.stroke();
     
@@ -369,39 +349,20 @@ function drawTouchButton(cfg, pressed) {
     const { x, y, radius: r, label, color } = cfg;
     
     touchCtx.beginPath();
-    touchCtx.arc(x + 2, y + 2, r, 0, Math.PI * 2);
-    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
-    touchCtx.fill();
-    
-    const g = touchCtx.createRadialGradient(x - r / 3, y - r / 3, 0, x, y, r);
-    if (pressed) {
-        g.addColorStop(0, lightenColor(color, 30));
-        g.addColorStop(1, darkenColor(color, 20));
-    } else {
-        g.addColorStop(0, lightenColor(color, 20));
-        g.addColorStop(0.7, color);
-        g.addColorStop(1, darkenColor(color, 20));
-    }
-    touchCtx.beginPath();
     touchCtx.arc(x, y, r, 0, Math.PI * 2);
-    touchCtx.fillStyle = g;
+    touchCtx.fillStyle = pressed ? color : darkenColor(color, 20);
     touchCtx.fill();
     touchCtx.strokeStyle = pressed ? '#fff' : '#666';
     touchCtx.lineWidth = pressed ? 4 : 2;
     touchCtx.stroke();
     
-    touchCtx.fillStyle = pressed ? '#fff' : '#eee';
+    touchCtx.fillStyle = '#fff';
     touchCtx.font = `bold ${r * 0.4}px monospace`;
     touchCtx.textAlign = 'center';
     touchCtx.textBaseline = 'middle';
     touchCtx.fillText(label, x, y);
 }
 
-function lightenColor(c, p) {
-    const n = parseInt(c.replace('#', ''), 16);
-    const a = Math.round(2.55 * p);
-    return '#' + (0x1000000 + Math.min(255, (n >> 16) + a) * 0x10000 + Math.min(255, ((n >> 8) & 0xFF) + a) * 0x100 + Math.min(255, (n & 0xFF) + a)).toString(16).slice(1);
-}
 function darkenColor(c, p) {
     const n = parseInt(c.replace('#', ''), 16);
     const a = Math.round(2.55 * p);
@@ -411,7 +372,6 @@ function darkenColor(c, p) {
 let gameState = 'title';
 let deathCount = 0;
 let currentLevel = 0;
-let screenShake = 0;
 let deathTimer = 0;
 let clearTimer = 0;
 let gameTime = 0;
@@ -473,28 +433,29 @@ document.addEventListener('keyup', e => { keys[e.code] = false; });
 
 if (isTouchDevice) {
     canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
         if (gameState === 'title') { gameState = 'playing'; resetLevel(); }
         else if (gameState === 'dead' && deathTimer > 30) { gameState = 'playing'; resetLevel(); }
         else if (gameState === 'clear' && clearTimer > 60) { gameState = 'title'; currentLevel = 0; deathCount = 0; }
-    }, { passive: true });
+    }, { passive: false });
 }
 
 function isActionPressed(a) {
     switch (a) {
-        case 'left': return (isTouchDevice && touchState.stick.dx < -0.3) || keys[keyBindings.left];
-        case 'right': return (isTouchDevice && touchState.stick.dx > 0.3) || keys[keyBindings.right];
-        case 'jump': return (isTouchDevice && touchState.jump) || keys[keyBindings.jump] || keys[keyBindings.jump2] || keys[keyBindings.jump3];
-        case 'dash': return (isTouchDevice && touchState.dash) || keys[keyBindings.dash] || keys[keyBindings.dash2];
+        case 'left': return touchState.left || keys[keyBindings.left];
+        case 'right': return touchState.right || keys[keyBindings.right];
+        case 'jump': return touchState.jump || keys[keyBindings.jump] || keys[keyBindings.jump2] || keys[keyBindings.jump3];
+        case 'dash': return touchState.dash || keys[keyBindings.dash] || keys[keyBindings.dash2];
     }
     return false;
 }
 function isActionJustPressed(a) {
     switch (a) {
         case 'dash':
-            if (isTouchDevice && touchState.dash && !prevTouchDash) return true;
+            if (touchState.dash && !prevTouchDash) return true;
             return keysPressed[keyBindings.dash] || keysPressed[keyBindings.dash2];
         case 'jump':
-            if (isTouchDevice && touchState.jump && !prevTouchJump) return true;
+            if (touchState.jump && !prevTouchJump) return true;
             return keysPressed[keyBindings.jump] || keysPressed[keyBindings.jump2] || keysPressed[keyBindings.jump3];
     }
     return false;
@@ -528,9 +489,7 @@ const GAME_CONFIG = {
         { maxDeaths: 500, name: 'THE KID', color: '#8888ff' },
         { maxDeaths: Infinity, name: 'THE MASOCHIST', color: '#ff00ff' },
     ],
-    difficulties: [
-        { from: 0, label: '', color: '#ffcc00' },
-    ],
+    difficulties: [{ from: 0, label: '', color: '#ffcc00' }],
 };
 
 function resetLevel() {
@@ -552,29 +511,11 @@ function resetLevel() {
     textParticles = [];
     trailParticles = [];
     particles = [];
-    screenShake = 0;
     slowMotion = 1;
     flashEffect = 0;
     keysPressed = {};
     prevTouchJump = false;
     prevTouchDash = false;
-}
-
-function createExplosion(x, y, count = 30, colors = ['#ff4400', '#ff8800', '#ffcc00']) {
-    for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const s = Math.random() * 8 + 2;
-        particles.push({
-            x, y,
-            vx: Math.cos(a) * s,
-            vy: Math.sin(a) * s,
-            life: 30 + Math.random() * 30,
-            size: 2 + Math.random() * 6,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            gravity: 0.2
-        });
-    }
-    flashEffect = 10;
 }
 
 function createTextParticle(x, y, text, color = '#fff') {
@@ -622,7 +563,6 @@ function rectCollision(a, b) {
 function update() {
     gameTime++;
     if (slowMotion < 1) slowMotion = Math.min(1, slowMotion + 0.02);
-    if (screenShake > 0) screenShake *= 0.9;
     if (flashEffect > 0) flashEffect--;
     
     if (gameState === 'dead') { deathTimer++; updateParticles(); return; }
@@ -834,11 +774,6 @@ function updateParticles() {
 
 function draw() {
     ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
-    
-    // プレイ中のみ画面を揺らす
-    if (screenShake > 0.5 && gameState === 'playing') {
-        ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
-    }
 
     const lvl = levels[currentLevel] || levels[0];
     const g = ctx.createLinearGradient(0, 0, 0, 600);
@@ -913,10 +848,7 @@ function draw() {
         ctx.globalAlpha = Math.min(1, p.life / 20);
         ctx.font = `bold ${p.size}px monospace`;
         ctx.textAlign = 'center';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 4;
         ctx.fillText(p.text, p.x, p.y);
-        ctx.shadowBlur = 0;
         ctx.textAlign = 'left';
     }
     ctx.globalAlpha = 1;
@@ -952,7 +884,6 @@ function drawPlatform(p) {
         ctx.beginPath(); ctx.moveTo(x, p.y); ctx.lineTo(x, p.y + p.h); ctx.stroke();
     }
     ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
     ctx.strokeRect(p.x, p.y, p.w, p.h);
     if (type === 'gold' || type === 'crystal') {
         const t = gameTime * 0.1;
@@ -1014,13 +945,10 @@ function drawPlayer() {
 
     ctx.fillStyle = '#ff6688';
     ctx.fillRect(px + 2, py + 6 + bobY, 12, 10);
-
     ctx.fillStyle = '#ffccbb';
     ctx.fillRect(px + 2, py + bobY, 12, 8);
-
     ctx.fillStyle = '#553322';
     ctx.fillRect(px + 2, py + bobY, 12, 3);
-
     ctx.fillStyle = '#fff';
     ctx.fillRect(px + (f > 0 ? 8 : 4), py + 3 + bobY, 5, 4);
     ctx.fillStyle = '#000';
@@ -1031,7 +959,6 @@ function drawPlayer() {
     ctx.fillStyle = '#4444ff';
     ctx.fillRect(px + 3 + l1, py + 15 + bobY, 4, 5);
     ctx.fillRect(px + 9 + l2, py + 15 + bobY, 4, 5);
-
     ctx.fillStyle = '#666';
     ctx.fillRect(px + (f > 0 ? 12 : -4), py + 9 + bobY, 8, 4);
 
@@ -1062,12 +989,6 @@ function drawHUD() {
     ctx.fillStyle = diff.color;
     ctx.font = 'bold 14px monospace';
     ctx.fillText(lvl.name, 10, 60);
-
-    if (diff.label) {
-        ctx.fillStyle = diff.color;
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(diff.label, 10, 75);
-    }
 
     ctx.fillStyle = player.dashCooldown > 0 ? '#444' : '#0ff';
     ctx.fillRect(740, 10, 50, 8);
@@ -1106,20 +1027,16 @@ function drawDeathScreen() {
     ctx.fillRect(0, 0, 800, 600);
 
     if (deathTimer > 30) {
-        ctx.save();
-        ctx.translate(400, 250);
         ctx.fillStyle = '#ff0000';
         ctx.shadowColor = '#ff0000';
         ctx.shadowBlur = 30;
         ctx.font = 'bold 64px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', 0, 0);
+        ctx.fillText('GAME OVER', 400, 250);
         ctx.shadowBlur = 0;
-        ctx.restore();
 
         ctx.fillStyle = '#ffaaaa';
         ctx.font = '24px monospace';
-        ctx.textAlign = 'center';
         ctx.fillText(`Death Count: ${deathCount}`, 400, 310);
 
         if (Math.floor(gameTime / 30) % 2 === 0) {
@@ -1127,10 +1044,6 @@ function drawDeathScreen() {
             ctx.font = '18px monospace';
             ctx.fillText(isTouchDevice ? 'Tap to retry' : 'Press Z / Space / Enter to retry', 400, 370);
         }
-
-        ctx.fillStyle = '#888';
-        ctx.font = '14px monospace';
-        ctx.fillText(isTouchDevice ? '' : 'Press R to restart stage', 400, 410);
         ctx.textAlign = 'left';
     }
 }
@@ -1146,16 +1059,12 @@ function drawTitle() {
     }
 
     ctx.textAlign = 'center';
-    ctx.save();
-    ctx.translate(400, 110);
-    ctx.rotate(Math.sin(t * 0.5) * 0.02);
     ctx.fillStyle = '#ff0000';
     ctx.shadowColor = '#ff0000';
     ctx.shadowBlur = 30;
     ctx.font = 'bold 32px monospace';
-    ctx.fillText(GAME_CONFIG.title, 0, 0);
+    ctx.fillText(GAME_CONFIG.title, 400, 110);
     ctx.shadowBlur = 0;
-    ctx.restore();
 
     ctx.fillStyle = '#ff6666';
     ctx.font = 'bold 18px monospace';
@@ -1205,16 +1114,12 @@ function drawClear() {
     ctx.globalAlpha = 1;
 
     ctx.textAlign = 'center';
-    ctx.save();
-    ctx.translate(400, 120);
-    ctx.scale(1 + Math.sin(t * 2) * 0.05, 1 + Math.sin(t * 2) * 0.05);
     ctx.fillStyle = '#ffff00';
     ctx.shadowColor = '#ffff00';
     ctx.shadowBlur = 40;
     ctx.font = 'bold 38px monospace';
-    ctx.fillText('CONGRATULATIONS!', 0, 0);
+    ctx.fillText('CONGRATULATIONS!', 400, 120);
     ctx.shadowBlur = 0;
-    ctx.restore();
 
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 26px monospace';
@@ -1236,14 +1141,10 @@ function drawClear() {
     ctx.fillText(`Rank: ${rank.name}`, 400, 310);
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#888';
-    ctx.font = '14px monospace';
-    ctx.fillText(`You conquered all ${levels.length} stages!`, 400, 370);
-
     if (clearTimer > 60 && Math.sin(t * 4) > 0) {
         ctx.fillStyle = '#fff';
         ctx.font = '16px monospace';
-        ctx.fillText(isTouchDevice ? 'Tap for Title' : 'Press Z / Space / Enter for Title', 400, 440);
+        ctx.fillText(isTouchDevice ? 'Tap for Title' : 'Press Z / Space / Enter for Title', 400, 400);
     }
     ctx.textAlign = 'left';
 }

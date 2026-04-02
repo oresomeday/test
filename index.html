@@ -23,11 +23,12 @@ html, body {
     height: 100%;
 }
 #gameArea {
-    flex: 2;
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     background: #000;
+    position: relative;
 }
 canvas#game { 
     display: block;
@@ -35,15 +36,36 @@ canvas#game {
 }
 #touchControls {
     display: none;
-    flex: 1;
+    height: 140px;
+    min-height: 120px;
+    max-height: 160px;
     background: linear-gradient(to bottom, #1a1a2e, #0a0a15);
     position: relative;
-    min-height: 150px;
-    max-height: 200px;
+    flex-shrink: 0;
 }
 #touchCanvas {
     width: 100%;
     height: 100%;
+}
+#menuButton {
+    display: none;
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    padding: 8px 20px;
+    font-size: 12px;
+    font-family: monospace;
+    border-radius: 20px;
+    z-index: 50;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+#menuButton:active {
+    background: rgba(255,255,255,0.3);
 }
 #optionsOverlay {
     display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -64,30 +86,36 @@ canvas#game {
 #optionsButtons { text-align: center; margin-top: 30px; }
 .section-title { color: #ffcc00; margin: 30px 0 15px 0; padding-bottom: 5px; border-bottom: 1px solid #444; }
 
-/* Fullscreen button for mobile */
 #fullscreenBtn {
     display: none;
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: #ff4444;
+    background: linear-gradient(135deg, #ff4444, #ff0000);
     color: #fff;
-    border: none;
-    padding: 30px 60px;
-    font-size: 24px;
+    border: 4px solid #fff;
+    padding: 40px 80px;
+    font-size: 28px;
     font-family: monospace;
-    border-radius: 10px;
+    border-radius: 15px;
     z-index: 1000;
     cursor: pointer;
+    box-shadow: 0 0 50px rgba(255,0,0,0.5), inset 0 0 30px rgba(255,255,255,0.2);
+    animation: btnPulse 1.5s infinite;
+}
+@keyframes btnPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 50px rgba(255,0,0,0.5); }
+    50% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 80px rgba(255,0,0,0.8); }
 }
 </style>
 </head>
 <body>
-<button id="fullscreenBtn">TAP TO START<br><small>タップしてスタート</small></button>
+<button id="fullscreenBtn">▶ TAP TO START ▶<br><small>タップしてスタート</small></button>
 <div id="gameContainer">
     <div id="gameArea">
         <canvas id="game"></canvas>
+        <button id="menuButton">☰ MENU</button>
     </div>
     <div id="touchControls">
         <canvas id="touchCanvas"></canvas>
@@ -128,6 +156,7 @@ const optionsOverlay = document.getElementById('optionsOverlay');
 const gameContainer = document.getElementById('gameContainer');
 const gameArea = document.getElementById('gameArea');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
+const menuButton = document.getElementById('menuButton');
 
 const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 const gameWidth = 800;
@@ -137,6 +166,7 @@ const gameHeight = 600;
 //  FULLSCREEN & SCREEN MANAGEMENT
 // ============================================================
 let isFullscreen = false;
+let gameStarted = false;
 
 function requestFullscreen() {
     const elem = document.documentElement;
@@ -149,7 +179,6 @@ function requestFullscreen() {
     } else if (elem.msRequestFullscreen) {
         elem.msRequestFullscreen();
     }
-    // Lock orientation to landscape if possible
     if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock('landscape').catch(() => {});
     }
@@ -158,54 +187,72 @@ function requestFullscreen() {
 function setupMobileFullscreen() {
     if (isTouchDevice) {
         fullscreenBtn.style.display = 'block';
-        fullscreenBtn.addEventListener('click', () => {
-            requestFullscreen();
-            fullscreenBtn.style.display = 'none';
-            isFullscreen = true;
-            resizeCanvas();
-        });
-        fullscreenBtn.addEventListener('touchstart', (e) => {
+        const startGame = (e) => {
             e.preventDefault();
             requestFullscreen();
             fullscreenBtn.style.display = 'none';
             isFullscreen = true;
+            gameStarted = true;
             resizeCanvas();
-        });
+        };
+        fullscreenBtn.addEventListener('click', startGame);
+        fullscreenBtn.addEventListener('touchstart', startGame);
+    } else {
+        gameStarted = true;
     }
 }
+
+// Menu button
+menuButton.addEventListener('click', () => {
+    if (gameState === 'playing' || gameState === 'dead') {
+        gameState = 'title';
+        currentLevel = 0;
+    }
+});
+menuButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (gameState === 'playing' || gameState === 'dead') {
+        gameState = 'title';
+        currentLevel = 0;
+    }
+});
 
 document.addEventListener('fullscreenchange', () => {
     isFullscreen = !!document.fullscreenElement;
     resizeCanvas();
 });
 
-// --- Screen ---
 function resizeCanvas() {
     const windowW = window.innerWidth;
     const windowH = window.innerHeight;
     
-    if (isTouchDevice) {
-        // Mobile: 2/3 game, 1/3 controls
-        touchControls.style.display = 'flex';
-        const controlHeight = Math.min(Math.floor(windowH / 3), 200);
-        const gameAreaHeight = windowH - controlHeight;
+    if (isTouchDevice && gameStarted) {
+        touchControls.style.display = 'block';
+        menuButton.style.display = 'block';
         
+        // Fixed control height
+        const controlHeight = Math.min(140, Math.max(100, windowH * 0.18));
         touchControls.style.height = controlHeight + 'px';
         touchControls.style.minHeight = controlHeight + 'px';
         touchControls.style.maxHeight = controlHeight + 'px';
         
-        // Set touch canvas size
         touchCanvas.width = windowW;
         touchCanvas.height = controlHeight;
         
-        // Calculate game canvas size maintaining aspect ratio
+        // Game area uses ALL remaining space
+        const gameAreaHeight = windowH - controlHeight;
+        
+        // Fill the entire game area
         const ratio = gameWidth / gameHeight;
         let canvasW, canvasH;
         
         if (windowW / gameAreaHeight > ratio) {
+            // Height limited - fill height
             canvasH = gameAreaHeight;
             canvasW = gameAreaHeight * ratio;
         } else {
+            // Width limited - fill width
             canvasW = windowW;
             canvasH = windowW / ratio;
         }
@@ -216,9 +263,13 @@ function resizeCanvas() {
         canvas.style.height = canvasH + 'px';
         
         updateButtonPositions();
+    } else if (isTouchDevice && !gameStarted) {
+        touchControls.style.display = 'none';
+        menuButton.style.display = 'none';
     } else {
         // Desktop
         touchControls.style.display = 'none';
+        menuButton.style.display = 'none';
         const ratio = gameWidth / gameHeight;
         let canvasW, canvasH;
         
@@ -289,7 +340,7 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ============================================================
-//  TOUCH CONTROLS (IMPROVED)
+//  TOUCH CONTROLS (IMPROVED - BUTTONS SEPARATED)
 // ============================================================
 const touchState = { 
     stick: { active: false, id: null, startX: 0, startY: 0, dx: 0, dy: 0 }, 
@@ -299,10 +350,10 @@ const touchState = {
     dashId: null
 };
 
-let stickConfig = { x: 100, y: 80, baseRadius: 50, stickRadius: 30, maxDist: 40 };
+let stickConfig = { x: 80, y: 70, baseRadius: 45, stickRadius: 28, maxDist: 35 };
 let buttonConfig = {
-    jump: { x: 0, y: 80, radius: 45, label: 'JUMP', color: '#00aa00' },
-    dash: { x: 0, y: 80, radius: 35, label: 'DASH', color: '#0088ff' }
+    jump: { x: 0, y: 0, radius: 40, label: 'JUMP', color: '#00aa00' },
+    dash: { x: 0, y: 0, radius: 32, label: 'DASH', color: '#0088ff' }
 };
 
 function updateButtonPositions() {
@@ -310,20 +361,25 @@ function updateButtonPositions() {
     const h = touchCanvas.height;
     
     // Left side: analog stick
-    stickConfig.x = Math.min(100, w * 0.15);
+    stickConfig.x = Math.max(70, w * 0.12);
     stickConfig.y = h / 2;
-    stickConfig.baseRadius = Math.min(50, h * 0.35);
+    stickConfig.baseRadius = Math.min(45, h * 0.38);
     stickConfig.stickRadius = stickConfig.baseRadius * 0.6;
-    stickConfig.maxDist = stickConfig.baseRadius * 0.8;
+    stickConfig.maxDist = stickConfig.baseRadius * 0.75;
     
-    // Right side: buttons
-    buttonConfig.jump.x = w - Math.min(100, w * 0.15);
-    buttonConfig.jump.y = h / 2;
-    buttonConfig.jump.radius = Math.min(45, h * 0.3);
+    // Right side: buttons - MORE SEPARATED
+    const buttonAreaStart = w * 0.6;
+    const buttonAreaWidth = w * 0.4;
     
-    buttonConfig.dash.x = w - Math.min(180, w * 0.28);
+    // Dash button on the left of button area
+    buttonConfig.dash.x = buttonAreaStart + buttonAreaWidth * 0.25;
     buttonConfig.dash.y = h / 2;
-    buttonConfig.dash.radius = Math.min(35, h * 0.25);
+    buttonConfig.dash.radius = Math.min(32, h * 0.26);
+    
+    // Jump button on the right of button area (bigger)
+    buttonConfig.jump.x = buttonAreaStart + buttonAreaWidth * 0.72;
+    buttonConfig.jump.y = h / 2;
+    buttonConfig.jump.radius = Math.min(42, h * 0.34);
 }
 
 function handleTouchStart(e) {
@@ -335,7 +391,7 @@ function handleTouchStart(e) {
         const y = t.clientY - rect.top;
         
         // Left half: stick
-        if (x < touchCanvas.width / 2 && !touchState.stick.active) {
+        if (x < touchCanvas.width * 0.4 && !touchState.stick.active) {
             touchState.stick.active = true;
             touchState.stick.id = t.identifier;
             touchState.stick.startX = x;
@@ -345,14 +401,14 @@ function handleTouchStart(e) {
         
         // Jump button
         const jumpDist = Math.sqrt((x - buttonConfig.jump.x) ** 2 + (y - buttonConfig.jump.y) ** 2);
-        if (jumpDist < buttonConfig.jump.radius + 20) {
+        if (jumpDist < buttonConfig.jump.radius + 15) {
             touchState.jump = true;
             touchState.jumpId = t.identifier;
         }
         
         // Dash button
         const dashDist = Math.sqrt((x - buttonConfig.dash.x) ** 2 + (y - buttonConfig.dash.y) ** 2);
-        if (dashDist < buttonConfig.dash.radius + 20) {
+        if (dashDist < buttonConfig.dash.radius + 15) {
             touchState.dash = true;
             touchState.dashId = t.identifier;
         }
@@ -413,39 +469,38 @@ if (isTouchDevice) {
 }
 
 function drawTouchControls() {
-    if (!isTouchDevice) return;
+    if (!isTouchDevice || !gameStarted) return;
     
     touchCtx.clearRect(0, 0, touchCanvas.width, touchCanvas.height);
     
-    // Background
+    // Background gradient
     const bgGrad = touchCtx.createLinearGradient(0, 0, 0, touchCanvas.height);
     bgGrad.addColorStop(0, '#1a1a2e');
     bgGrad.addColorStop(1, '#0a0a15');
     touchCtx.fillStyle = bgGrad;
     touchCtx.fillRect(0, 0, touchCanvas.width, touchCanvas.height);
     
-    // Divider line
-    touchCtx.strokeStyle = '#333';
-    touchCtx.lineWidth = 2;
-    touchCtx.beginPath();
-    touchCtx.moveTo(touchCanvas.width / 2, 10);
-    touchCtx.lineTo(touchCanvas.width / 2, touchCanvas.height - 10);
-    touchCtx.stroke();
+    // Top border glow
+    const topGlow = touchCtx.createLinearGradient(0, 0, 0, 5);
+    topGlow.addColorStop(0, 'rgba(100,100,150,0.5)');
+    topGlow.addColorStop(1, 'transparent');
+    touchCtx.fillStyle = topGlow;
+    touchCtx.fillRect(0, 0, touchCanvas.width, 5);
     
     // Draw analog stick base
     const g = touchCtx.createRadialGradient(
         stickConfig.x, stickConfig.y, 0,
         stickConfig.x, stickConfig.y, stickConfig.baseRadius
     );
-    g.addColorStop(0, '#333');
-    g.addColorStop(0.7, '#222');
-    g.addColorStop(1, '#111');
+    g.addColorStop(0, '#3a3a4a');
+    g.addColorStop(0.6, '#2a2a3a');
+    g.addColorStop(1, '#1a1a2a');
     
     touchCtx.beginPath();
     touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI * 2);
     touchCtx.fillStyle = g;
     touchCtx.fill();
-    touchCtx.strokeStyle = '#444';
+    touchCtx.strokeStyle = '#4a4a5a';
     touchCtx.lineWidth = 3;
     touchCtx.stroke();
     
@@ -455,38 +510,38 @@ function drawTouchControls() {
     
     // Shadow
     touchCtx.beginPath();
-    touchCtx.arc(kx + 3, ky + 3, stickConfig.stickRadius, 0, Math.PI * 2);
-    touchCtx.fillStyle = 'rgba(0,0,0,0.5)';
+    touchCtx.arc(kx + 2, ky + 2, stickConfig.stickRadius, 0, Math.PI * 2);
+    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
     touchCtx.fill();
     
     // Knob gradient
     const kg = touchCtx.createRadialGradient(
-        kx - 10, ky - 10, 0,
+        kx - 8, ky - 8, 0,
         kx, ky, stickConfig.stickRadius
     );
-    kg.addColorStop(0, touchState.stick.active ? '#888' : '#666');
-    kg.addColorStop(0.5, touchState.stick.active ? '#666' : '#444');
-    kg.addColorStop(1, touchState.stick.active ? '#444' : '#333');
+    kg.addColorStop(0, touchState.stick.active ? '#aaa' : '#777');
+    kg.addColorStop(0.5, touchState.stick.active ? '#777' : '#555');
+    kg.addColorStop(1, touchState.stick.active ? '#555' : '#333');
     
     touchCtx.beginPath();
     touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI * 2);
     touchCtx.fillStyle = kg;
     touchCtx.fill();
-    touchCtx.strokeStyle = touchState.stick.active ? '#aaa' : '#555';
-    touchCtx.lineWidth = 3;
+    touchCtx.strokeStyle = touchState.stick.active ? '#bbb' : '#666';
+    touchCtx.lineWidth = 2;
     touchCtx.stroke();
     
-    // Direction indicators on base
-    touchCtx.fillStyle = '#555';
-    touchCtx.font = 'bold 12px monospace';
+    // Direction indicators
+    touchCtx.fillStyle = '#666';
+    touchCtx.font = `bold ${Math.max(10, stickConfig.baseRadius * 0.25)}px sans-serif`;
     touchCtx.textAlign = 'center';
     touchCtx.textBaseline = 'middle';
-    touchCtx.fillText('◀', stickConfig.x - stickConfig.baseRadius + 15, stickConfig.y);
-    touchCtx.fillText('▶', stickConfig.x + stickConfig.baseRadius - 15, stickConfig.y);
+    touchCtx.fillText('◀', stickConfig.x - stickConfig.baseRadius + 12, stickConfig.y);
+    touchCtx.fillText('▶', stickConfig.x + stickConfig.baseRadius - 12, stickConfig.y);
     
-    // Draw buttons
-    drawTouchButton(buttonConfig.jump, touchState.jump);
+    // Draw buttons - with labels below
     drawTouchButton(buttonConfig.dash, touchState.dash);
+    drawTouchButton(buttonConfig.jump, touchState.jump);
 }
 
 function drawTouchButton(cfg, pressed) {
@@ -494,18 +549,19 @@ function drawTouchButton(cfg, pressed) {
     
     // Shadow
     touchCtx.beginPath();
-    touchCtx.arc(x + 3, y + 3, r, 0, Math.PI * 2);
-    touchCtx.fillStyle = 'rgba(0,0,0,0.5)';
+    touchCtx.arc(x + 2, y + 2, r, 0, Math.PI * 2);
+    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
     touchCtx.fill();
     
     // Button gradient
     const g = touchCtx.createRadialGradient(x - r / 3, y - r / 3, 0, x, y, r);
     if (pressed) {
-        g.addColorStop(0, lightenColor(color, 40));
-        g.addColorStop(1, darkenColor(color, 20));
+        g.addColorStop(0, lightenColor(color, 50));
+        g.addColorStop(0.5, lightenColor(color, 20));
+        g.addColorStop(1, color);
     } else {
-        g.addColorStop(0, lightenColor(color, 20));
-        g.addColorStop(0.7, color);
+        g.addColorStop(0, lightenColor(color, 30));
+        g.addColorStop(0.6, color);
         g.addColorStop(1, darkenColor(color, 30));
     }
     
@@ -513,13 +569,25 @@ function drawTouchButton(cfg, pressed) {
     touchCtx.arc(x, y, r, 0, Math.PI * 2);
     touchCtx.fillStyle = g;
     touchCtx.fill();
-    touchCtx.strokeStyle = pressed ? '#fff' : '#666';
-    touchCtx.lineWidth = 3;
+    
+    // Border
+    touchCtx.strokeStyle = pressed ? '#fff' : 'rgba(255,255,255,0.4)';
+    touchCtx.lineWidth = pressed ? 3 : 2;
     touchCtx.stroke();
     
+    // Glow when pressed
+    if (pressed) {
+        touchCtx.shadowColor = color;
+        touchCtx.shadowBlur = 15;
+        touchCtx.beginPath();
+        touchCtx.arc(x, y, r, 0, Math.PI * 2);
+        touchCtx.stroke();
+        touchCtx.shadowBlur = 0;
+    }
+    
     // Label
-    touchCtx.fillStyle = pressed ? '#fff' : '#ddd';
-    touchCtx.font = `bold ${Math.max(10, r / 3)}px monospace`;
+    touchCtx.fillStyle = pressed ? '#fff' : '#eee';
+    touchCtx.font = `bold ${Math.max(10, r / 2.5)}px monospace`;
     touchCtx.textAlign = 'center';
     touchCtx.textBaseline = 'middle';
     touchCtx.fillText(label, x, y);
@@ -541,11 +609,11 @@ function darkenColor(c, p) {
 //  SAVE SYSTEM
 // ============================================================
 let saveData = {
-    clearedStages: [],      // Array of cleared stage indices
-    bestDeaths: {},         // Best death count per stage
-    totalDeaths: 0,         // Total deaths across all plays
-    lastStage: 0,           // Last played stage
-    totalClears: 0          // Number of full game clears
+    clearedStages: [],
+    bestDeaths: {},
+    totalDeaths: 0,
+    lastStage: 0,
+    totalClears: 0
 };
 
 function loadSaveData() {
@@ -569,7 +637,6 @@ function clearStage(stageIndex) {
         saveData.clearedStages.push(stageIndex);
     }
     
-    // Update best death count for this stage
     const currentDeaths = deathCount - (stageDeathStart || 0);
     if (saveData.bestDeaths[stageIndex] === undefined || currentDeaths < saveData.bestDeaths[stageIndex]) {
         saveData.bestDeaths[stageIndex] = currentDeaths;
@@ -599,7 +666,7 @@ function resetAllSaveData() {
 // ============================================================
 //  GAME STATE
 // ============================================================
-let gameState = 'title'; // 'title', 'stageselect', 'playing', 'dead', 'clear', 'gameclear', 'options'
+let gameState = 'title';
 let deathCount = 0;
 let totalDeathCount = 0;
 let stageDeathStart = 0;
@@ -612,6 +679,35 @@ let slowMotion = 1;
 let flashEffect = 0;
 let stageSelectCursor = 0;
 let stageSelectScroll = 0;
+let titleParticles = [];
+let titleFlares = [];
+
+// Initialize title effects
+function initTitleEffects() {
+    titleParticles = [];
+    titleFlares = [];
+    for (let i = 0; i < 150; i++) {
+        titleParticles.push({
+            x: Math.random() * 800,
+            y: Math.random() * 600,
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2,
+            size: Math.random() * 4 + 1,
+            hue: Math.random() * 60 - 30,
+            life: Math.random() * 100
+        });
+    }
+    for (let i = 0; i < 20; i++) {
+        titleFlares.push({
+            x: Math.random() * 800,
+            y: Math.random() * 600,
+            size: Math.random() * 100 + 50,
+            speed: Math.random() * 0.5 + 0.2,
+            phase: Math.random() * Math.PI * 2
+        });
+    }
+}
+initTitleEffects();
 
 let particles = [];
 let bloodParticles = [];
@@ -683,7 +779,6 @@ function handleMenuInput(code) {
         if (isRight) stageSelectCursor = Math.min(levels.length - 1, stageSelectCursor + 10);
         
         if (isConfirm) {
-            // Can only select if previous stage is cleared or it's stage 0
             if (stageSelectCursor === 0 || saveData.clearedStages.includes(stageSelectCursor - 1)) {
                 currentLevel = stageSelectCursor;
                 deathCount = 0;
@@ -747,7 +842,6 @@ function handleTouchMenu(x, y) {
         gameState = 'stageselect';
         stageSelectCursor = saveData.lastStage || 0;
     } else if (gameState === 'stageselect') {
-        // Check if tapping on a stage
         const startY = 120;
         const itemHeight = 35;
         const visible = Math.floor((600 - startY - 50) / itemHeight);
@@ -759,7 +853,6 @@ function handleTouchMenu(x, y) {
             const itemY = startY + i * itemHeight;
             if (y >= itemY && y < itemY + itemHeight && x >= 100 && x <= 700) {
                 if (stageSelectCursor === idx) {
-                    // Double tap to select
                     if (idx === 0 || saveData.clearedStages.includes(idx - 1)) {
                         currentLevel = idx;
                         deathCount = 0;
@@ -774,7 +867,6 @@ function handleTouchMenu(x, y) {
             }
         }
         
-        // Back button area
         if (y > 550 && x < 150) {
             gameState = 'title';
         }
@@ -829,7 +921,6 @@ function clearKeysPressed() { keysPressed = {}; }
 // ============================================================
 const levels = [];
 
-// Generate 30 placeholder stages
 for (let i = 0; i < 30; i++) {
     let difficulty, diffColor, bgColor;
     
@@ -970,7 +1061,6 @@ function killPlayer() {
     gameState = 'dead';
     slowMotion = 0.3;
     
-    // Blood particles
     for (let i = 0; i < 60; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = Math.random() * 15 + 3;
@@ -986,7 +1076,6 @@ function killPlayer() {
         });
     }
     
-    // Spark particles
     for (let i = 0; i < 20; i++) {
         sparkParticles.push({
             x: player.x + player.w / 2,
@@ -1014,6 +1103,17 @@ function rectCollision(a, b) {
 // ============================================================
 function update() {
     gameTime++;
+    
+    // Update title particles
+    if (gameState === 'title') {
+        for (const p of titleParticles) {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life++;
+            if (p.x < 0 || p.x > 800) p.vx *= -1;
+            if (p.y < 0 || p.y > 600) p.vy *= -1;
+        }
+    }
     
     if (slowMotion < 1) slowMotion = Math.min(1, slowMotion + 0.02);
     
@@ -1176,7 +1276,6 @@ function update() {
         gameState = 'clear';
         clearTimer = 0;
         
-        // Clear effects
         for (let i = 0; i < 100; i++) {
             particles.push({
                 x: player.x + player.w / 2,
@@ -1576,69 +1675,203 @@ function drawHUD() {
 function drawTitle() {
     const t = gameTime * 0.02;
     
-    // Floating particles
-    for (let i = 0; i < 30; i++) {
-        ctx.fillStyle = `rgba(255,0,0,${0.1 + Math.sin(t + i) * 0.05})`;
+    // Animated background
+    const bgGrad = ctx.createRadialGradient(400, 300, 0, 400, 300, 500);
+    bgGrad.addColorStop(0, `hsl(${(t * 20) % 360}, 50%, 10%)`);
+    bgGrad.addColorStop(0.5, '#0a0a1a');
+    bgGrad.addColorStop(1, '#000');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 800, 600);
+    
+    // Light flares
+    for (const f of titleFlares) {
+        const flareAlpha = 0.03 + Math.sin(t * f.speed + f.phase) * 0.02;
+        const flareGrad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.size);
+        flareGrad.addColorStop(0, `rgba(255, 100, 100, ${flareAlpha})`);
+        flareGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = flareGrad;
         ctx.beginPath();
-        ctx.arc(
-            Math.sin(t + i * 0.5) * 400 + 400,
-            Math.cos(t * 0.7 + i * 0.3) * 300 + 300,
-            3 + Math.sin(t + i) * 2, 0, Math.PI * 2
-        );
+        ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
         ctx.fill();
+    }
+    
+    // Floating particles with trails
+    for (const p of titleParticles) {
+        const hue = (p.hue + t * 30) % 360;
+        const alpha = 0.3 + Math.sin(p.life * 0.05) * 0.2;
+        
+        // Glow
+        ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    
+    // Lightning effects
+    if (Math.random() < 0.02) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.3})`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        ctx.beginPath();
+        let lx = Math.random() * 800;
+        let ly = 0;
+        ctx.moveTo(lx, ly);
+        while (ly < 600) {
+            lx += (Math.random() - 0.5) * 50;
+            ly += Math.random() * 30 + 10;
+            ctx.lineTo(lx, ly);
+        }
+        ctx.stroke();
     }
     
     ctx.textAlign = 'center';
     
-    // Title
-    ctx.save();
-    ctx.translate(400, 110);
-    ctx.rotate(Math.sin(t * 0.5) * 0.02);
-    ctx.fillStyle = '#ff0000';
-    ctx.shadowColor = '#ff0000';
-    ctx.shadowBlur = 30;
-    ctx.font = 'bold 32px monospace';
-    ctx.fillText(GAME_CONFIG.title, 0, 0);
+    // Main title with multiple layers
+    const titleY = 140;
+    
+    // Title shadow/glow layers
+    for (let i = 5; i >= 0; i--) {
+        ctx.save();
+        ctx.translate(400, titleY);
+        ctx.rotate(Math.sin(t * 0.5 + i * 0.1) * 0.02);
+        ctx.scale(1 + i * 0.02, 1 + i * 0.02);
+        
+        if (i > 0) {
+            ctx.fillStyle = `rgba(255, 0, 0, ${0.15 - i * 0.02})`;
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 20 + i * 10;
+        } else {
+            // Main title
+            const titleGrad = ctx.createLinearGradient(-200, -20, 200, 20);
+            titleGrad.addColorStop(0, '#ff0000');
+            titleGrad.addColorStop(0.3, '#ff4444');
+            titleGrad.addColorStop(0.5, '#ffaaaa');
+            titleGrad.addColorStop(0.7, '#ff4444');
+            titleGrad.addColorStop(1, '#ff0000');
+            ctx.fillStyle = titleGrad;
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 30;
+        }
+        
+        ctx.font = 'bold 40px monospace';
+        ctx.fillText(GAME_CONFIG.title, 0, 0);
+        ctx.restore();
+    }
     ctx.shadowBlur = 0;
+    
+    // Subtitle with animation
+    ctx.save();
+    ctx.translate(400, 190);
+    const subScale = 1 + Math.sin(t * 3) * 0.03;
+    ctx.scale(subScale, subScale);
+    ctx.fillStyle = '#ff8866';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText(GAME_CONFIG.subtitle, 0, 0);
     ctx.restore();
     
-    ctx.fillStyle = '#ff6666';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText(GAME_CONFIG.subtitle, 400, 150);
+    // Stage count badge
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.roundRect(330, 210, 140, 30, 15);
+    ctx.fill();
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`🎮 ${levels.length} STAGES`, 400, 230);
     
-    ctx.fillStyle = '#888';
-    ctx.font = '12px monospace';
-    ctx.fillText(`${levels.length} STAGES`, 400, 180);
-    
-    // Progress
+    // Progress display
     const cleared = saveData.clearedStages.length;
-    ctx.fillStyle = '#666';
-    ctx.fillText(`Progress: ${cleared}/${levels.length} cleared`, 400, 210);
+    const progressPct = Math.floor((cleared / levels.length) * 100);
     
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(200, 260, 400, 25);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(202, 262, 396, 21);
+    
+    const progGrad = ctx.createLinearGradient(202, 0, 598, 0);
+    progGrad.addColorStop(0, '#00ff00');
+    progGrad.addColorStop(0.5, '#88ff88');
+    progGrad.addColorStop(1, '#00ff00');
+    ctx.fillStyle = progGrad;
+    ctx.fillRect(202, 262, 396 * (cleared / levels.length), 21);
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText(`PROGRESS: ${cleared}/${levels.length} (${progressPct}%)`, 400, 278);
+    
+    // Trophies
     if (saveData.totalClears > 0) {
+        ctx.save();
+        ctx.translate(400, 320);
+        ctx.scale(1 + Math.sin(t * 2) * 0.1, 1 + Math.sin(t * 2) * 0.1);
         ctx.fillStyle = '#ffcc00';
-        ctx.fillText(`🏆 ${saveData.totalClears} full clear(s)`, 400, 235);
-    }
-    
-    // Start prompt
-    if (Math.sin(t * 4) > 0) {
-        ctx.fillStyle = '#fff';
-        ctx.shadowColor = '#fff';
-        ctx.shadowBlur = 10;
-        ctx.font = 'bold 16px monospace';
-        ctx.fillText(isTouchDevice ? 'TAP TO START' : 'PRESS Z / SPACE / ENTER TO START', 400, 320);
+        ctx.shadowColor = '#ffcc00';
+        ctx.shadowBlur = 20;
+        ctx.font = 'bold 18px monospace';
+        ctx.fillText(`🏆 ${saveData.totalClears} FULL CLEAR${saveData.totalClears > 1 ? 'S' : ''} 🏆`, 0, 0);
         ctx.shadowBlur = 0;
+        ctx.restore();
     }
     
-    // Controls
+    // Start prompt with fancy animation
+    const promptY = 400;
+    const promptAlpha = 0.5 + Math.sin(t * 4) * 0.5;
+    
+    // Prompt background
+    ctx.fillStyle = `rgba(255,255,255,${promptAlpha * 0.1})`;
+    ctx.beginPath();
+    ctx.roundRect(200, promptY - 25, 400, 50, 25);
+    ctx.fill();
+    
+    ctx.fillStyle = `rgba(255,255,255,${promptAlpha})`;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 15;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText(isTouchDevice ? '▶ TAP TO START ▶' : '▶ PRESS Z / SPACE / ENTER ▶', 400, promptY + 5);
+    ctx.shadowBlur = 0;
+    
+    // Controls info
     ctx.fillStyle = '#888';
     ctx.font = '12px monospace';
     if (isTouchDevice) {
-        ctx.fillText('Stick: Move | JUMP | DASH', 400, 400);
+        ctx.fillText('🕹 Stick: Move | 🟢 JUMP | 🔵 DASH', 400, 480);
     } else {
-        ctx.fillText('Arrow Keys: Move | Z/Space/Up: Jump | X/Shift: Dash', 400, 400);
-        ctx.fillText('R: Restart | Esc: Options', 400, 425);
+        ctx.fillText('⬅➡ Move | Z/Space/Up: Jump | X/Shift: Dash', 400, 480);
+        ctx.fillText('R: Restart | ESC: Options', 400, 505);
     }
+    
+    // Decorative corners
+    ctx.strokeStyle = '#ff000044';
+    ctx.lineWidth = 3;
+    const cornerSize = 50;
+    // Top left
+    ctx.beginPath();
+    ctx.moveTo(20, 70);
+    ctx.lineTo(20, 20);
+    ctx.lineTo(70, 20);
+    ctx.stroke();
+    // Top right
+    ctx.beginPath();
+    ctx.moveTo(730, 20);
+    ctx.lineTo(780, 20);
+    ctx.lineTo(780, 70);
+    ctx.stroke();
+    // Bottom left
+    ctx.beginPath();
+    ctx.moveTo(20, 530);
+    ctx.lineTo(20, 580);
+    ctx.lineTo(70, 580);
+    ctx.stroke();
+    // Bottom right
+    ctx.beginPath();
+    ctx.moveTo(730, 580);
+    ctx.lineTo(780, 580);
+    ctx.lineTo(780, 530);
+    ctx.stroke();
     
     ctx.textAlign = 'left';
 }
@@ -1796,11 +2029,9 @@ function drawDeathScreen() {
 function drawStageClear() {
     const t = gameTime * 0.03;
     
-    // Background overlay
     ctx.fillStyle = `rgba(0,50,0,${Math.min(0.7, clearTimer / 60)})`;
     ctx.fillRect(0, 0, 800, 600);
     
-    // Particles
     for (const p of particles) {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = Math.min(1, p.life / 30);
@@ -1812,7 +2043,6 @@ function drawStageClear() {
     
     ctx.textAlign = 'center';
     
-    // Stage Clear
     ctx.save();
     ctx.translate(400, 200);
     ctx.scale(1 + Math.sin(t * 2) * 0.05, 1 + Math.sin(t * 2) * 0.05);
@@ -1824,7 +2054,6 @@ function drawStageClear() {
     ctx.shadowBlur = 0;
     ctx.restore();
     
-    // Stats
     ctx.fillStyle = '#fff';
     ctx.font = '20px monospace';
     ctx.fillText(`Stage ${currentLevel + 1} Complete!`, 400, 280);
@@ -1854,7 +2083,6 @@ function drawStageClear() {
 function drawGameClear() {
     const t = gameTime * 0.03;
     
-    // Rainbow background particles
     for (let i = 0; i < 60; i++) {
         ctx.fillStyle = `hsla(${(t * 50 + i * 20) % 360},100%,50%,0.15)`;
         ctx.beginPath();
@@ -1866,7 +2094,6 @@ function drawGameClear() {
         ctx.fill();
     }
     
-    // Particles
     for (const p of particles) {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = Math.min(1, p.life / 30);
@@ -1878,7 +2105,6 @@ function drawGameClear() {
     
     ctx.textAlign = 'center';
     
-    // Congratulations
     ctx.save();
     ctx.translate(400, 100);
     ctx.scale(1 + Math.sin(t * 2) * 0.05, 1 + Math.sin(t * 2) * 0.05);
@@ -1894,12 +2120,10 @@ function drawGameClear() {
     ctx.font = 'bold 26px monospace';
     ctx.fillText('YOU ARE THE GUY!', 400, 170);
     
-    // Stats
     ctx.fillStyle = '#aaa';
     ctx.font = '18px monospace';
     ctx.fillText(`Total Deaths: ${totalDeathCount}`, 400, 230);
     
-    // Rank
     const rank = getRank(totalDeathCount);
     ctx.fillStyle = rank.color;
     ctx.shadowColor = rank.color;
@@ -1908,7 +2132,6 @@ function drawGameClear() {
     ctx.fillText(`${rank.icon} ${rank.name} ${rank.icon}`, 400, 290);
     ctx.shadowBlur = 0;
     
-    // Rank description
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
     if (totalDeathCount === 0) {
@@ -1923,7 +2146,6 @@ function drawGameClear() {
         ctx.fillText('You made it! Persistence pays off!', 400, 330);
     }
     
-    // Game stats
     ctx.fillStyle = '#666';
     ctx.font = '12px monospace';
     ctx.fillText(`Conquered all ${levels.length} stages!`, 400, 380);
@@ -1931,7 +2153,6 @@ function drawGameClear() {
         ctx.fillText(`Total full clears: ${saveData.totalClears}`, 400, 400);
     }
     
-    // Return prompt
     if (clearTimer > 120 && Math.sin(t * 4) > 0) {
         ctx.fillStyle = '#fff';
         ctx.font = '16px monospace';

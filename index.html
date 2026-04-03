@@ -30,21 +30,20 @@ body {
     position: relative;
     background: #000;
     overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 #game {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     background: #0a0a1a;
 }
 #controlsArea {
-    flex: 0 0 130px;
+    flex: 0 0 140px;
     position: relative;
     background: rgba(20, 20, 30, 0.95);
+    padding-top: 5px;
     padding-bottom: env(safe-area-inset-bottom, 0);
 }
 #controlsArea canvas {
@@ -71,19 +70,24 @@ body {
         align-items: center;
     }
     #gameArea {
-        flex: none;
-        width: 800px;
-        height: 600px;
-    }
-    #game {
-        position: static;
-        width: 800px;
-        height: 600px;
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
     #controlsArea {
-        flex: 0 0 50px;
-        width: 800px;
-        opacity: 0.3;
+        position: fixed;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        flex: none;
+        height: 40px;
+        width: auto;
+        min-width: 600px;
+        opacity: 0.4;
+        border-radius: 8px 8px 0 0;
     }
     #pcGuide {
         display: block;
@@ -117,8 +121,7 @@ body {
 <div id="controlsArea">
     <canvas id="touchCanvas"></canvas>
     <div id="pcGuide">
-        ← → : Move | Z / Space / ↑ : Jump | X / Shift : Dash<br>
-        R : Restart | ESC : Options
+        ← → : Move | Z / Space / ↑ : Jump | X / Shift : Dash | R : Restart | ESC : Options
     </div>
 </div>
 <div id="optionsOverlay">
@@ -165,6 +168,7 @@ const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 let scaleX = 1;
 let scaleY = 1;
+let dpr = 1;
 
 // --- Screen ---
 function resizeCanvas() {
@@ -172,26 +176,42 @@ function resizeCanvas() {
     const areaH = gameArea.clientHeight;
     
     if (isMobile) {
-        // スマホ: 画面全体に引き伸ばし
-        canvas.width = areaW;
-        canvas.height = areaH;
-        scaleX = areaW / GAME_WIDTH;
-        scaleY = areaH / GAME_HEIGHT;
+        // モバイル: 高解像度対応
+        dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        
+        canvas.width = areaW * dpr;
+        canvas.height = areaH * dpr;
+        canvas.style.width = areaW + 'px';
+        canvas.style.height = areaH + 'px';
+        
+        scaleX = (areaW * dpr) / GAME_WIDTH;
+        scaleY = (areaH * dpr) / GAME_HEIGHT;
     } else {
-        // PC: 固定サイズ
+        // PC: 画面に合わせて拡大（アスペクト比維持）
+        const baseScale = Math.min(areaW / GAME_WIDTH, areaH / GAME_HEIGHT);
+        const displayScale = Math.min(baseScale, 1.5); // 最大1.5倍
+        
+        const displayW = Math.floor(GAME_WIDTH * displayScale);
+        const displayH = Math.floor(GAME_HEIGHT * displayScale);
+        
         canvas.width = GAME_WIDTH;
         canvas.height = GAME_HEIGHT;
-        canvas.style.width = GAME_WIDTH + 'px';
-        canvas.style.height = GAME_HEIGHT + 'px';
+        canvas.style.width = displayW + 'px';
+        canvas.style.height = displayH + 'px';
+        
         scaleX = 1;
         scaleY = 1;
+        dpr = 1;
     }
     
     // タッチコントローラー
     const ctrlW = controlsArea.clientWidth;
     const ctrlH = controlsArea.clientHeight;
-    touchCanvas.width = ctrlW;
-    touchCanvas.height = ctrlH;
+    const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    touchCanvas.width = ctrlW * ctrlDpr;
+    touchCanvas.height = ctrlH * ctrlDpr;
+    touchCanvas.style.width = ctrlW + 'px';
+    touchCanvas.style.height = ctrlH + 'px';
     
     updateButtonPositions();
 }
@@ -250,80 +270,188 @@ document.addEventListener('keydown', function(e) {
 const touchState = { stick:{ active:false, id:null, x:0, y:0, dx:0, dy:0 }, jump:false, dash:false };
 const stickConfig = { x:100, y:0, baseRadius:50, stickRadius:30, maxDist:40 };
 const buttonConfig = {
-    jump:{ x:0, y:0, radius:45, label:'JUMP', color:'#00aa00' },
-    dash:{ x:0, y:0, radius:35, label:'DASH', color:'#0088ff' }
+    jump:{ x:0, y:0, radius:48, label:'JUMP', color:'#00aa00' },
+    dash:{ x:0, y:0, radius:38, label:'DASH', color:'#0088ff' }
 };
 
+// 実際の画面座標（タッチ判定用）
+let touchButtonPositions = { jump: {x:0,y:0}, dash: {x:0,y:0}, stick: {x:0,y:0} };
+
 function updateButtonPositions() {
-    const h = touchCanvas.height || 130;
-    const w = touchCanvas.width || window.innerWidth;
-    stickConfig.y = h / 2;
-    stickConfig.x = Math.max(70, Math.min(100, w * 0.12));
-    buttonConfig.jump.x = w - 70;
-    buttonConfig.jump.y = h / 2;
-    buttonConfig.dash.x = w - 150;
-    buttonConfig.dash.y = h / 2;
+    const ctrlW = controlsArea.clientWidth;
+    const ctrlH = controlsArea.clientHeight;
+    const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    
+    // 実際の画面座標（タッチ判定用）
+    const centerY = ctrlH * 0.45; // 少し上寄り
+    
+    touchButtonPositions.stick.x = Math.max(70, Math.min(100, ctrlW * 0.12));
+    touchButtonPositions.stick.y = centerY;
+    
+    // ジャンプとダッシュを斜めに配置
+    touchButtonPositions.jump.x = ctrlW - 65;
+    touchButtonPositions.jump.y = centerY + 15; // 下寄り
+    
+    touchButtonPositions.dash.x = ctrlW - 140;
+    touchButtonPositions.dash.y = centerY - 15; // 上寄り
+    
+    // Canvas描画用座標（DPR適用）
+    stickConfig.x = touchButtonPositions.stick.x * ctrlDpr;
+    stickConfig.y = touchButtonPositions.stick.y * ctrlDpr;
+    stickConfig.baseRadius = 50 * ctrlDpr;
+    stickConfig.stickRadius = 30 * ctrlDpr;
+    stickConfig.maxDist = 40 * ctrlDpr;
+    
+    buttonConfig.jump.x = touchButtonPositions.jump.x * ctrlDpr;
+    buttonConfig.jump.y = touchButtonPositions.jump.y * ctrlDpr;
+    buttonConfig.jump.radius = 48 * ctrlDpr;
+    
+    buttonConfig.dash.x = touchButtonPositions.dash.x * ctrlDpr;
+    buttonConfig.dash.y = touchButtonPositions.dash.y * ctrlDpr;
+    buttonConfig.dash.radius = 38 * ctrlDpr;
 }
 
 function handleTouchStart(e) {
     e.preventDefault(); const rect = touchCanvas.getBoundingClientRect();
     for (let t of e.changedTouches) {
-        const x=t.clientX-rect.left, y=t.clientY-rect.top;
-        if (Math.sqrt((x-stickConfig.x)**2+(y-stickConfig.y)**2)<stickConfig.baseRadius+20&&!touchState.stick.active) { touchState.stick.active=true; touchState.stick.id=t.identifier; updateStickDelta(x,y); }
-        if (Math.sqrt((x-buttonConfig.jump.x)**2+(y-buttonConfig.jump.y)**2)<buttonConfig.jump.radius+10) touchState.jump=true;
-        if (Math.sqrt((x-buttonConfig.dash.x)**2+(y-buttonConfig.dash.y)**2)<buttonConfig.dash.radius+10) touchState.dash=true;
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+        
+        const stickDist = Math.sqrt((x-touchButtonPositions.stick.x)**2+(y-touchButtonPositions.stick.y)**2);
+        if (stickDist < 70 && !touchState.stick.active) {
+            touchState.stick.active = true;
+            touchState.stick.id = t.identifier;
+            updateStickDelta(x, y);
+        }
+        
+        const jumpDist = Math.sqrt((x-touchButtonPositions.jump.x)**2+(y-touchButtonPositions.jump.y)**2);
+        if (jumpDist < 58) touchState.jump = true;
+        
+        const dashDist = Math.sqrt((x-touchButtonPositions.dash.x)**2+(y-touchButtonPositions.dash.y)**2);
+        if (dashDist < 48) touchState.dash = true;
     }
 }
 function handleTouchMove(e) {
     e.preventDefault(); const rect = touchCanvas.getBoundingClientRect();
-    for (let t of e.changedTouches) { if (t.identifier===touchState.stick.id) updateStickDelta(t.clientX-rect.left, t.clientY-rect.top); }
+    for (let t of e.changedTouches) {
+        if (t.identifier === touchState.stick.id) {
+            updateStickDelta(t.clientX - rect.left, t.clientY - rect.top);
+        }
+    }
 }
 function handleTouchEnd(e) {
     e.preventDefault();
-    for (let t of e.changedTouches) { if (t.identifier===touchState.stick.id) { touchState.stick.active=false; touchState.stick.id=null; touchState.stick.dx=0; touchState.stick.dy=0; } }
-    if (e.touches.length===0) { touchState.jump=false; touchState.dash=false; }
-    else { const rect=touchCanvas.getBoundingClientRect(); for(let t of e.changedTouches){const x=t.clientX-rect.left,y=t.clientY-rect.top;if(Math.sqrt((x-buttonConfig.jump.x)**2+(y-buttonConfig.jump.y)**2)<buttonConfig.jump.radius+20)touchState.jump=false;if(Math.sqrt((x-buttonConfig.dash.x)**2+(y-buttonConfig.dash.y)**2)<buttonConfig.dash.radius+20)touchState.dash=false;}}
+    for (let t of e.changedTouches) {
+        if (t.identifier === touchState.stick.id) {
+            touchState.stick.active = false;
+            touchState.stick.id = null;
+            touchState.stick.dx = 0;
+            touchState.stick.dy = 0;
+        }
+    }
+    if (e.touches.length === 0) {
+        touchState.jump = false;
+        touchState.dash = false;
+    } else {
+        const rect = touchCanvas.getBoundingClientRect();
+        let jumpStillPressed = false;
+        let dashStillPressed = false;
+        for (let t of e.touches) {
+            const x = t.clientX - rect.left;
+            const y = t.clientY - rect.top;
+            if (Math.sqrt((x-touchButtonPositions.jump.x)**2+(y-touchButtonPositions.jump.y)**2) < 58) jumpStillPressed = true;
+            if (Math.sqrt((x-touchButtonPositions.dash.x)**2+(y-touchButtonPositions.dash.y)**2) < 48) dashStillPressed = true;
+        }
+        touchState.jump = jumpStillPressed;
+        touchState.dash = dashStillPressed;
+    }
 }
-function updateStickDelta(x,y) {
-    let dx=x-stickConfig.x, dy=y-stickConfig.y; const d=Math.sqrt(dx*dx+dy*dy);
-    if(d>stickConfig.maxDist){dx=(dx/d)*stickConfig.maxDist;dy=(dy/d)*stickConfig.maxDist;}
-    touchState.stick.dx=dx/stickConfig.maxDist; touchState.stick.dy=dy/stickConfig.maxDist;
+function updateStickDelta(x, y) {
+    let dx = x - touchButtonPositions.stick.x;
+    let dy = y - touchButtonPositions.stick.y;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = 40;
+    if (d > maxDist) {
+        dx = (dx / d) * maxDist;
+        dy = (dy / d) * maxDist;
+    }
+    touchState.stick.dx = dx / maxDist;
+    touchState.stick.dy = dy / maxDist;
 }
 
-touchCanvas.addEventListener('touchstart',handleTouchStart,{passive:false});
-touchCanvas.addEventListener('touchmove',handleTouchMove,{passive:false});
-touchCanvas.addEventListener('touchend',handleTouchEnd,{passive:false});
-touchCanvas.addEventListener('touchcancel',handleTouchEnd,{passive:false});
+touchCanvas.addEventListener('touchstart', handleTouchStart, {passive:false});
+touchCanvas.addEventListener('touchmove', handleTouchMove, {passive:false});
+touchCanvas.addEventListener('touchend', handleTouchEnd, {passive:false});
+touchCanvas.addEventListener('touchcancel', handleTouchEnd, {passive:false});
 
 function drawTouchControls() {
-    touchCtx.clearRect(0,0,touchCanvas.width,touchCanvas.height);
+    const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    touchCtx.clearRect(0, 0, touchCanvas.width, touchCanvas.height);
     
     if (!isMobile) return;
     
     // スティック
-    const g=touchCtx.createRadialGradient(stickConfig.x,stickConfig.y,0,stickConfig.x,stickConfig.y,stickConfig.baseRadius);
-    g.addColorStop(0,'#333');g.addColorStop(0.7,'#222');g.addColorStop(1,'#111');
-    touchCtx.beginPath();touchCtx.arc(stickConfig.x,stickConfig.y,stickConfig.baseRadius,0,Math.PI*2);touchCtx.fillStyle=g;touchCtx.fill();touchCtx.strokeStyle='#444';touchCtx.lineWidth=3;touchCtx.stroke();
+    const g = touchCtx.createRadialGradient(stickConfig.x, stickConfig.y, 0, stickConfig.x, stickConfig.y, stickConfig.baseRadius);
+    g.addColorStop(0, '#333');
+    g.addColorStop(0.7, '#222');
+    g.addColorStop(1, '#111');
+    touchCtx.beginPath();
+    touchCtx.arc(stickConfig.x, stickConfig.y, stickConfig.baseRadius, 0, Math.PI*2);
+    touchCtx.fillStyle = g;
+    touchCtx.fill();
+    touchCtx.strokeStyle = '#444';
+    touchCtx.lineWidth = 3 * ctrlDpr;
+    touchCtx.stroke();
     
-    const kx=stickConfig.x+touchState.stick.dx*stickConfig.maxDist, ky=stickConfig.y+touchState.stick.dy*stickConfig.maxDist;
-    touchCtx.beginPath();touchCtx.arc(kx+2,ky+2,stickConfig.stickRadius,0,Math.PI*2);touchCtx.fillStyle='rgba(0,0,0,0.4)';touchCtx.fill();
-    const kg=touchCtx.createRadialGradient(kx-8,ky-8,0,kx,ky,stickConfig.stickRadius);
-    kg.addColorStop(0,'#777');kg.addColorStop(0.5,'#555');kg.addColorStop(1,'#333');
-    touchCtx.beginPath();touchCtx.arc(kx,ky,stickConfig.stickRadius,0,Math.PI*2);touchCtx.fillStyle=kg;touchCtx.fill();
-    touchCtx.strokeStyle=touchState.stick.active?'#aaa':'#555';touchCtx.lineWidth=2;touchCtx.stroke();
+    const kx = stickConfig.x + touchState.stick.dx * stickConfig.maxDist;
+    const ky = stickConfig.y + touchState.stick.dy * stickConfig.maxDist;
+    touchCtx.beginPath();
+    touchCtx.arc(kx + 2*ctrlDpr, ky + 2*ctrlDpr, stickConfig.stickRadius, 0, Math.PI*2);
+    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
+    touchCtx.fill();
+    const kg = touchCtx.createRadialGradient(kx - 8*ctrlDpr, ky - 8*ctrlDpr, 0, kx, ky, stickConfig.stickRadius);
+    kg.addColorStop(0, '#777');
+    kg.addColorStop(0.5, '#555');
+    kg.addColorStop(1, '#333');
+    touchCtx.beginPath();
+    touchCtx.arc(kx, ky, stickConfig.stickRadius, 0, Math.PI*2);
+    touchCtx.fillStyle = kg;
+    touchCtx.fill();
+    touchCtx.strokeStyle = touchState.stick.active ? '#aaa' : '#555';
+    touchCtx.lineWidth = 2 * ctrlDpr;
+    touchCtx.stroke();
     
-    drawTouchButton(buttonConfig.jump,touchState.jump);
-    drawTouchButton(buttonConfig.dash,touchState.dash);
+    drawTouchButton(buttonConfig.jump, touchState.jump, ctrlDpr);
+    drawTouchButton(buttonConfig.dash, touchState.dash, ctrlDpr);
 }
 
-function drawTouchButton(cfg,pressed) {
-    const{x,y,radius:r,label,color}=cfg;
-    touchCtx.beginPath();touchCtx.arc(x+2,y+2,r,0,Math.PI*2);touchCtx.fillStyle='rgba(0,0,0,0.4)';touchCtx.fill();
-    const g=touchCtx.createRadialGradient(x-r/3,y-r/3,0,x,y,r);
-    if(pressed){g.addColorStop(0,color);g.addColorStop(1,'#222');}else{g.addColorStop(0,lightenColor(color,40));g.addColorStop(0.7,color);g.addColorStop(1,darkenColor(color,40));}
-    touchCtx.beginPath();touchCtx.arc(x,y,r,0,Math.PI*2);touchCtx.fillStyle=g;touchCtx.fill();
-    touchCtx.strokeStyle=pressed?'#fff':'#666';touchCtx.lineWidth=3;touchCtx.stroke();
-    touchCtx.fillStyle=pressed?'#fff':'#ddd';touchCtx.font=`bold ${r > 40 ? 14 : 12}px monospace`;touchCtx.textAlign='center';touchCtx.textBaseline='middle';touchCtx.fillText(label,x,y);
+function drawTouchButton(cfg, pressed, dpr) {
+    const {x, y, radius: r, label, color} = cfg;
+    touchCtx.beginPath();
+    touchCtx.arc(x + 2*dpr, y + 2*dpr, r, 0, Math.PI*2);
+    touchCtx.fillStyle = 'rgba(0,0,0,0.4)';
+    touchCtx.fill();
+    const g = touchCtx.createRadialGradient(x - r/3, y - r/3, 0, x, y, r);
+    if (pressed) {
+        g.addColorStop(0, color);
+        g.addColorStop(1, '#222');
+    } else {
+        g.addColorStop(0, lightenColor(color, 40));
+        g.addColorStop(0.7, color);
+        g.addColorStop(1, darkenColor(color, 40));
+    }
+    touchCtx.beginPath();
+    touchCtx.arc(x, y, r, 0, Math.PI*2);
+    touchCtx.fillStyle = g;
+    touchCtx.fill();
+    touchCtx.strokeStyle = pressed ? '#fff' : '#666';
+    touchCtx.lineWidth = 3 * dpr;
+    touchCtx.stroke();
+    touchCtx.fillStyle = pressed ? '#fff' : '#ddd';
+    touchCtx.font = `bold ${14 * dpr}px monospace`;
+    touchCtx.textAlign = 'center';
+    touchCtx.textBaseline = 'middle';
+    touchCtx.fillText(label, x, y);
 }
 
 function lightenColor(c,p){const n=parseInt(c.replace('#',''),16),a=Math.round(2.55*p);return '#'+(0x1000000+Math.min(255,(n>>16)+a)*0x10000+Math.min(255,((n>>8)&0xFF)+a)*0x100+Math.min(255,(n&0xFF)+a)).toString(16).slice(1);}

@@ -187,20 +187,21 @@ function resizeCanvas() {
         scaleX = (areaW * dpr) / GAME_WIDTH;
         scaleY = (areaH * dpr) / GAME_HEIGHT;
     } else {
-        // PC: 画面に合わせて拡大（アスペクト比維持）
+        // PC: 高解像度対応（1.5倍）
         const baseScale = Math.min(areaW / GAME_WIDTH, areaH / GAME_HEIGHT);
-        const displayScale = Math.min(baseScale, 1.5); // 最大1.5倍
+        const displayScale = Math.min(baseScale, 1.5);
         
         const displayW = Math.floor(GAME_WIDTH * displayScale);
         const displayH = Math.floor(GAME_HEIGHT * displayScale);
         
-        canvas.width = GAME_WIDTH;
-        canvas.height = GAME_HEIGHT;
+        // 解像度を1.5倍に向上
+        canvas.width = GAME_WIDTH * 1.5;
+        canvas.height = GAME_HEIGHT * 1.5;
         canvas.style.width = displayW + 'px';
         canvas.style.height = displayH + 'px';
         
-        scaleX = 1;
-        scaleY = 1;
+        scaleX = 1.5;
+        scaleY = 1.5;
         dpr = 1;
     }
     
@@ -282,18 +283,18 @@ function updateButtonPositions() {
     const ctrlH = controlsArea.clientHeight;
     const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
     
-    // 実際の画面座標（タッチ判定用）
-    const centerY = ctrlH * 0.45; // 少し上寄り
+    // 実際の画面座標（タッチ判定用） - 画面の約1/3の位置に配置
+    const centerY = ctrlH * 0.33; // 上部1/3に配置
     
     touchButtonPositions.stick.x = Math.max(70, Math.min(100, ctrlW * 0.12));
     touchButtonPositions.stick.y = centerY;
     
     // ジャンプとダッシュを斜めに配置
     touchButtonPositions.jump.x = ctrlW - 65;
-    touchButtonPositions.jump.y = centerY + 15; // 下寄り
+    touchButtonPositions.jump.y = centerY + 15;
     
     touchButtonPositions.dash.x = ctrlW - 140;
-    touchButtonPositions.dash.y = centerY - 15; // 上寄り
+    touchButtonPositions.dash.y = centerY - 15;
     
     // Canvas描画用座標（DPR適用）
     stickConfig.x = touchButtonPositions.stick.x * ctrlDpr;
@@ -491,7 +492,7 @@ initStars();
 
 const player = {
     x:50, y:500, w:16, h:20,
-    vx:0, vy:0, speed:4, jumpForce:-9,
+    vx:0, vy:0, speed: isMobile ? 6 : 4, jumpForce:-9, // モバイル版は移動速度1.5倍
     onGround:false, dead:false, facing:1,
     doubleJump:true, jumpHeld:false,
     dashCooldown:0, dashing:false, dashTime:0,

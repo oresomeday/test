@@ -40,7 +40,7 @@ body {
     background: #0a0a1a;
 }
 #controlsArea {
-    flex: 0 0 180px;
+    flex: 0 0 200px;
     position: relative;
     background: rgba(20, 20, 30, 0.95);
     padding-top: 5px;
@@ -298,17 +298,17 @@ function updateButtonPositions() {
     const ctrlH = controlsArea.clientHeight;
     const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
     
-    // さらに上に配置（画面上部15%の位置）
-    const centerY = ctrlH * 0.15;
+    // コントローラーエリアの中央付近に配置
+    const centerY = ctrlH * 0.45;
     
     touchButtonPositions.stick.x = Math.max(100, Math.min(130, ctrlW * 0.18));
-    touchButtonPositions.stick.y = centerY + 20;
+    touchButtonPositions.stick.y = centerY;
     
     touchButtonPositions.jump.x = ctrlW - 75;
-    touchButtonPositions.jump.y = centerY + 25;
+    touchButtonPositions.jump.y = centerY;
     
     touchButtonPositions.dash.x = ctrlW - 165;
-    touchButtonPositions.dash.y = centerY + 10;
+    touchButtonPositions.dash.y = centerY - 15;
     
     stickConfig.x = touchButtonPositions.stick.x * ctrlDpr;
     stickConfig.y = touchButtonPositions.stick.y * ctrlDpr;
@@ -467,7 +467,7 @@ let gameTime = 0;
 let slowMotion = 1;
 let flashEffect = 0;
 let stageSelectPage = 0;
-let selectedStage = 0; // PC用：現在選択中のステージ
+let selectedStage = 0;
 const STAGES_PER_PAGE = 10;
 const TOTAL_STAGES = 20;
 
@@ -519,7 +519,6 @@ document.addEventListener('keydown', e => {
         return;
     }
     
-    // ゲームオーバー時はどのキーでもリスタート
     if (gameState === 'dead' && deathTimer > 30) {
         gameState = 'playing';
         resetLevel();
@@ -527,7 +526,6 @@ document.addEventListener('keydown', e => {
         return;
     }
     
-    // タイトル画面
     if (gameState === 'title') {
         if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyZ') {
             gameState = 'stageSelect';
@@ -538,7 +536,6 @@ document.addEventListener('keydown', e => {
         return;
     }
     
-    // ステージ選択画面
     if (gameState === 'stageSelect') {
         const cols = 5;
         if (e.code === 'ArrowLeft') {
@@ -567,7 +564,6 @@ document.addEventListener('keydown', e => {
         return;
     }
     
-    // クリア画面
     if (gameState === 'clear' && clearTimer > 60) {
         gameState = 'title';
         currentLevel = 0;
@@ -585,7 +581,6 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// PC用マウスクリック
 canvas.addEventListener('click', e => {
     if (isMobile) return;
     
@@ -601,13 +596,11 @@ canvas.addEventListener('click', e => {
     }
     
     if (gameState === 'stageSelect') {
-        // 戻るボタン
         if (clickX >= 20 && clickX <= 100 && clickY >= 20 && clickY <= 60) {
             gameState = 'title';
             return;
         }
         
-        // ステージボタン
         const startX = 100, startY = 150, btnW = 120, btnH = 60, cols = 5;
         for (let i = 0; i < STAGES_PER_PAGE; i++) {
             const stageNum = stageSelectPage * STAGES_PER_PAGE + i;
@@ -628,7 +621,6 @@ canvas.addEventListener('click', e => {
             }
         }
         
-        // ページ切り替え
         if (clickY > 450 && clickY < 500) {
             if (clickX < GAME_WIDTH / 2 && stageSelectPage > 0) {
                 stageSelectPage--;
@@ -647,7 +639,6 @@ canvas.addEventListener('click', e => {
     }
 });
 
-// モバイル用タッチ
 canvas.addEventListener('touchstart', e => {
     const rect = canvas.getBoundingClientRect();
     const touch = e.touches[0];
@@ -687,13 +678,11 @@ canvas.addEventListener('touchstart', e => {
 });
 
 function handleStageSelectTouch(touchX, touchY) {
-    // 戻るボタン
     if (touchX < 100 && touchY < 80) {
         gameState = 'title';
         return;
     }
     
-    // ステージボタン
     const startX = 100, startY = 150, btnW = 120, btnH = 60, cols = 5;
     for (let i = 0; i < STAGES_PER_PAGE; i++) {
         const stageNum = stageSelectPage * STAGES_PER_PAGE + i;
@@ -714,7 +703,6 @@ function handleStageSelectTouch(touchX, touchY) {
         }
     }
     
-    // ページ切り替え
     if (touchY > 450) {
         if (touchX < GAME_WIDTH / 2 && stageSelectPage > 0) {
             stageSelectPage--;
@@ -812,8 +800,10 @@ function createTextParticle(x, y, text, color = '#fff') { textParticles.push({ x
 
 function killPlayer() {
     if (player.dead || player.invincible > 0) return;
-    player.dead = true; deathCount++; screenShake = 25; deathTimer = 0;
+    player.dead = true; deathCount++; deathTimer = 0;
     gameState = 'dead'; slowMotion = 0.3;
+    // 画面揺れを無効化
+    screenShake = 0;
     for (let i = 0; i < 60; i++) {
         const a = Math.random() * Math.PI * 2, s = Math.random() * 15 + 3;
         bloodParticles.push({ x: player.x + player.w / 2, y: player.y + player.h / 2, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 5, life: 80 + Math.random() * 80, size: 2 + Math.random() * 8, color: Math.random() > 0.3 ? '#ff0000' : '#880000', gravity: 0.4 });
@@ -939,7 +929,10 @@ function draw() {
     ctx.save();
     ctx.scale(scaleX, scaleY);
     
-    if (screenShake > 0.5) ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
+    // 画面揺れ（ゲームオーバー時は無効）
+    if (screenShake > 0.5 && gameState !== 'dead') {
+        ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
+    }
 
     const lvl = levels[currentLevel] || levels[0];
     const g = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
@@ -1062,8 +1055,7 @@ function drawDeathScreen() {
             ctx.fillText('RETURN TO MENU', GAME_WIDTH / 2, 62);
         }
         
-        ctx.save(); ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50); ctx.rotate(Math.sin(gameTime * 0.1) * 0.02);
-        ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 30; ctx.font = 'bold 48px monospace'; ctx.textAlign = 'center'; ctx.fillText('GAME OVER', 0, 0); ctx.shadowBlur = 0; ctx.restore();
+        ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 30; ctx.font = 'bold 48px monospace'; ctx.textAlign = 'center'; ctx.fillText('GAME OVER', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50); ctx.shadowBlur = 0;
         ctx.fillStyle = '#ffaaaa'; ctx.font = '20px monospace'; ctx.textAlign = 'center'; ctx.fillText(`Death Count: ${deathCount}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 10);
         
         if (Math.floor(gameTime / 30) % 2 === 0) {
@@ -1097,13 +1089,11 @@ function drawStageSelect() {
     ctx.fillStyle = '#ff4444'; ctx.font = 'bold 28px monospace';
     ctx.fillText('STAGE SELECT', GAME_WIDTH / 2, 60);
     
-    // 戻るボタン
     ctx.fillStyle = '#666'; ctx.fillRect(20, 20, 80, 40);
     ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.strokeRect(20, 20, 80, 40);
     ctx.fillStyle = '#fff'; ctx.font = '14px monospace'; ctx.textAlign = 'center';
     ctx.fillText('< BACK', 60, 46);
     
-    // 操作説明（PC）
     if (!isMobile) {
         ctx.fillStyle = '#666'; ctx.font = '12px monospace';
         ctx.fillText('Arrow Keys: Select | Z/Space/Enter: Start | Esc: Back', GAME_WIDTH / 2, 100);
@@ -1128,7 +1118,6 @@ function drawStageSelect() {
         else ctx.fillStyle = '#333';
         ctx.fillRect(bx, by, btnW, btnH);
         
-        // 選択中ハイライト（PC）
         if (!isMobile && isSelected) {
             ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4;
         } else {

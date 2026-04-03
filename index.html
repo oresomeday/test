@@ -25,24 +25,22 @@ body {
     flex-direction: column;
 }
 #gameArea {
-    flex: 2;
+    flex: 1;
     min-height: 0;
     position: relative;
-    background: #0a0a1a;
+    background: #000;
     overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
-#gameArea canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+#game {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    background: #0a0a1a;
 }
 #controlsArea {
-    flex: 1;
-    min-height: 100px;
+    flex: 0 0 150px;
     position: relative;
     background: rgba(20, 20, 30, 0.95);
     padding-bottom: env(safe-area-inset-bottom, 0);
@@ -66,8 +64,7 @@ body {
 
 @media (min-width: 800px) {
     #controlsArea {
-        flex: 0 0 80px;
-        min-height: 80px;
+        flex: 0 0 60px;
     }
     #pcGuide {
         display: block;
@@ -141,33 +138,40 @@ const optionsOverlay = document.getElementById('optionsOverlay');
 
 // --- Device Detection ---
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const renderScale = isMobile ? 0.65 : 1.0;
 const GAME_SPEED = isMobile ? 0.75 : 1.0;
 let gameSpeedAccum = 0;
 
-// --- Logical Screen Size ---
-function getVW() { return canvas.width / renderScale; }
-function getVH() { return canvas.height / renderScale; }
+// --- 固定論理サイズ ---
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
 
 // --- Screen ---
 function resizeCanvas() {
-    const areaW = gameArea.clientWidth || window.innerWidth;
-    const areaH = gameArea.clientHeight || Math.floor(window.innerHeight * 0.65);
+    const areaW = gameArea.clientWidth;
+    const areaH = gameArea.clientHeight;
     
-    canvas.width = Math.floor(areaW * renderScale);
-    canvas.height = Math.floor(areaH * renderScale);
+    // アスペクト比を維持してスケール計算
+    const scaleX = areaW / GAME_WIDTH;
+    const scaleY = areaH / GAME_HEIGHT;
+    scale = Math.min(scaleX, scaleY);
     
-    const ctrlW = controlsArea.clientWidth || window.innerWidth;
-    const ctrlH = controlsArea.clientHeight || 150;
+    // キャンバスサイズを設定
+    const canvasW = Math.floor(GAME_WIDTH * scale);
+    const canvasH = Math.floor(GAME_HEIGHT * scale);
+    
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    canvas.style.width = canvasW + 'px';
+    canvas.style.height = canvasH + 'px';
+    
+    // タッチコントローラー
+    const ctrlW = controlsArea.clientWidth;
+    const ctrlH = controlsArea.clientHeight;
     touchCanvas.width = ctrlW;
     touchCanvas.height = ctrlH;
-    
-    // 背景の星を再配置
-    const vw = getVW(), vh = getVH();
-    backgroundStars.forEach(s => {
-        if (s.x > vw) s.x = Math.random() * vw;
-        if (s.y > vh) s.y = Math.random() * vh;
-    });
     
     updateButtonPositions();
 }
@@ -327,8 +331,8 @@ function initStars() {
     backgroundStars = [];
     for (let i = 0; i < 80; i++) {
         backgroundStars.push({
-            x: Math.random() * 1200,
-            y: Math.random() * 900,
+            x: Math.random() * GAME_WIDTH,
+            y: Math.random() * GAME_HEIGHT,
             size: Math.random() * 2 + 0.5,
             speed: Math.random() * 0.3 + 0.1,
             twinkle: Math.random() * Math.PI * 2
@@ -395,15 +399,15 @@ function clearKeysPressed() { keysPressed={}; }
 const levels = [
     {
         name: "SAMPLE STAGE",
-        spawnX: 50, spawnY: 400, bgColor: '#0a0a1a',
+        spawnX: 50, spawnY: 500, bgColor: '#0a0a1a',
         platforms: [
-            { x:0, y:480, w:250, h:40, type:'grass' },
-            { x:300, y:400, w:80, h:16, type:'stone' },
-            { x:450, y:320, w:80, h:16, type:'stone' },
-            { x:600, y:240, w:100, h:16, type:'gold' },
+            { x:0, y:560, w:250, h:40, type:'grass' },
+            { x:350, y:480, w:80, h:16, type:'stone' },
+            { x:500, y:400, w:80, h:16, type:'stone' },
+            { x:650, y:320, w:100, h:16, type:'gold' },
         ],
         traps: [],
-        exitX: 640, exitY: 200,
+        exitX: 690, exitY: 280,
         messages: ["SAMPLE: Reach the exit!"]
     },
 ];
@@ -542,8 +546,7 @@ function update() {
     if(Math.abs(player.vx)>0.1) player.runFrame+=0.3; else player.runFrame=0;
 
     // Boundary death
-    const vw = getVW(), vh = getVH();
-    if(player.y>vh+50||player.x<-50||player.x>vw+50||player.y<-100){killPlayer();clearKeysPressed();return;}
+    if(player.y>GAME_HEIGHT+50||player.x<-50||player.x>GAME_WIDTH+50||player.y<-100){killPlayer();clearKeysPressed();return;}
 
     // Exit
     if(rectCollision(player,{x:lvl.exitX,y:lvl.exitY,w:30,h:36})) {
@@ -562,36 +565,34 @@ function update() {
 }
 
 function updateParticles() {
-    const vw = getVW(), vh = getVH();
     for(let i=bloodParticles.length-1;i>=0;i--){const p=bloodParticles[i];p.x+=p.vx*slowMotion;p.y+=p.vy*slowMotion;p.vy+=p.gravity*slowMotion;p.vx*=0.99;p.life--;if(p.life<=0)bloodParticles.splice(i,1);}
     for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity||0;p.vx*=0.98;p.life--;if(p.life<=0)particles.splice(i,1);}
     for(let i=sparkParticles.length-1;i>=0;i--){const p=sparkParticles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.9;p.vy*=0.9;p.life--;if(p.life<=0)sparkParticles.splice(i,1);}
     for(let i=textParticles.length-1;i>=0;i--){const p=textParticles[i];p.y+=p.vy;p.life--;if(p.life<=0)textParticles.splice(i,1);}
     for(let i=trailParticles.length-1;i>=0;i--){const p=trailParticles[i];p.life--;p.size*=0.9;if(p.life<=0)trailParticles.splice(i,1);}
-    for(const s of backgroundStars){s.twinkle+=0.05;s.y+=s.speed;if(s.y>vh){s.y=0;s.x=Math.random()*vw;}}
+    for(const s of backgroundStars){s.twinkle+=0.05;s.y+=s.speed;if(s.y>GAME_HEIGHT){s.y=0;s.x=Math.random()*GAME_WIDTH;}}
 }
 
 // ============================================================
 //  DRAW
 // ============================================================
 function draw() {
-    const vw = getVW(), vh = getVH();
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
+    ctx.scale(scale, scale);
     
-    if(screenShake>0.5) ctx.translate((Math.random()-0.5)*screenShake*2*renderScale,(Math.random()-0.5)*screenShake*2*renderScale);
+    if(screenShake>0.5) ctx.translate((Math.random()-0.5)*screenShake*2,(Math.random()-0.5)*screenShake*2);
 
     const lvl=levels[currentLevel]||levels[0];
-    const g=ctx.createLinearGradient(0,0,0,canvas.height);
+    const g=ctx.createLinearGradient(0,0,0,GAME_HEIGHT);
     g.addColorStop(0,lvl.bgColor||'#0a0a1a'); g.addColorStop(1,'#000015');
-    ctx.fillStyle=g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle=g; ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);
     
     // 星
     for(const s of backgroundStars){
         ctx.fillStyle=`rgba(255,255,255,${0.4+Math.sin(s.twinkle)*0.3})`;
         ctx.beginPath();
-        ctx.arc(s.x*renderScale,s.y*renderScale,s.size*renderScale,0,Math.PI*2);
+        ctx.arc(s.x,s.y,s.size,0,Math.PI*2);
         ctx.fill();
     }
 
@@ -601,11 +602,11 @@ function draw() {
     // Grid
     ctx.strokeStyle='rgba(255,255,255,0.03)';
     ctx.lineWidth = 1;
-    for(let i=0;i<vw;i+=32){ctx.beginPath();ctx.moveTo(i*renderScale,0);ctx.lineTo(i*renderScale,canvas.height);ctx.stroke();}
-    for(let i=0;i<vh;i+=32){ctx.beginPath();ctx.moveTo(0,i*renderScale);ctx.lineTo(canvas.width,i*renderScale);ctx.stroke();}
+    for(let i=0;i<GAME_WIDTH;i+=32){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,GAME_HEIGHT);ctx.stroke();}
+    for(let i=0;i<GAME_HEIGHT;i+=32){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(GAME_WIDTH,i);ctx.stroke();}
 
     // Trails
-    for(const p of trailParticles){ctx.fillStyle=p.color;ctx.globalAlpha=p.life/15;ctx.beginPath();ctx.arc(p.x*renderScale,p.y*renderScale,p.size*renderScale,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+    for(const p of trailParticles){ctx.fillStyle=p.color;ctx.globalAlpha=p.life/15;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
 
     // Platforms
     for(const p of lvl.platforms) drawPlatform(p);
@@ -617,15 +618,15 @@ function draw() {
     if(!player.dead) drawPlayer();
 
     // Blood
-    for(const p of bloodParticles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.fillRect((p.x-p.size/2)*renderScale,(p.y-p.size/2)*renderScale,p.size*renderScale,p.size*renderScale);}ctx.globalAlpha=1;
+    for(const p of bloodParticles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);}ctx.globalAlpha=1;
     // Particles
-    for(const p of particles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.beginPath();ctx.arc(p.x*renderScale,p.y*renderScale,p.size/2*renderScale,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+    for(const p of particles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.beginPath();ctx.arc(p.x,p.y,p.size/2,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
     // Sparks
-    for(const p of sparkParticles){ctx.strokeStyle=p.color;ctx.globalAlpha=p.life/20;ctx.lineWidth=2*renderScale;ctx.beginPath();ctx.moveTo(p.x*renderScale,p.y*renderScale);ctx.lineTo((p.x-p.vx*3)*renderScale,(p.y-p.vy*3)*renderScale);ctx.stroke();}ctx.globalAlpha=1;
+    for(const p of sparkParticles){ctx.strokeStyle=p.color;ctx.globalAlpha=p.life/20;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-p.vx*3,p.y-p.vy*3);ctx.stroke();}ctx.globalAlpha=1;
     // Text
-    for(const p of textParticles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/20);ctx.font=`bold ${p.size*renderScale}px monospace`;ctx.textAlign='center';ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(p.text,p.x*renderScale,p.y*renderScale);ctx.shadowBlur=0;ctx.textAlign='left';}ctx.globalAlpha=1;
+    for(const p of textParticles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/20);ctx.font=`bold ${p.size}px monospace`;ctx.textAlign='center';ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(p.text,p.x,p.y);ctx.shadowBlur=0;ctx.textAlign='left';}ctx.globalAlpha=1;
     // Flash
-    if(flashEffect>0){ctx.fillStyle=`rgba(255,255,255,${flashEffect/20})`;ctx.fillRect(0,0,canvas.width,canvas.height);}
+    if(flashEffect>0){ctx.fillStyle=`rgba(255,255,255,${flashEffect/20})`;ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);}
 
     drawHUD();
     if(gameState==='dead') drawDeathScreen();
@@ -646,29 +647,27 @@ function drawPlatform(p) {
         case 'crystal':c1='#4466aa';c2='#335599';c3='#6688cc';break;
         default:c1='#555';c2='#444';c3='#777';
     }
-    const rx=p.x*renderScale, ry=p.y*renderScale, rw=p.w*renderScale, rh=p.h*renderScale;
-    ctx.fillStyle=c1;ctx.fillRect(rx,ry,rw,rh);
-    ctx.fillStyle=c3;ctx.fillRect(rx,ry,rw,3*renderScale);
+    ctx.fillStyle=c1;ctx.fillRect(p.x,p.y,p.w,p.h);
+    ctx.fillStyle=c3;ctx.fillRect(p.x,p.y,p.w,3);
     ctx.strokeStyle=c2;ctx.lineWidth=1;
-    for(let x=p.x;x<p.x+p.w;x+=16){ctx.beginPath();ctx.moveTo(x*renderScale,ry);ctx.lineTo(x*renderScale,ry+rh);ctx.stroke();}
-    ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(rx,ry,rw,rh);
-    if(type==='gold'||type==='crystal'){const t=gameTime*0.1;for(let i=0;i<3;i++){ctx.fillStyle=type==='gold'?'rgba(255,255,200,0.9)':'rgba(200,220,255,0.9)';ctx.beginPath();ctx.arc((p.x+((t*20+i*p.w/3)%p.w))*renderScale,(p.y+Math.sin(t+i)*3+p.h/2)*renderScale,2*renderScale,0,Math.PI*2);ctx.fill();}}
+    for(let x=p.x;x<p.x+p.w;x+=16){ctx.beginPath();ctx.moveTo(x,p.y);ctx.lineTo(x,p.y+p.h);ctx.stroke();}
+    ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(p.x,p.y,p.w,p.h);
+    if(type==='gold'||type==='crystal'){const t=gameTime*0.1;for(let i=0;i<3;i++){ctx.fillStyle=type==='gold'?'rgba(255,255,200,0.9)':'rgba(200,220,255,0.9)';ctx.beginPath();ctx.arc(p.x+((t*20+i*p.w/3)%p.w),p.y+Math.sin(t+i)*3+p.h/2,2,0,Math.PI*2);ctx.fill();}}
 }
 
 function drawExit(x,y) {
     const t=gameTime*0.05;
-    const rx=x*renderScale, ry=y*renderScale;
-    for(let i=3;i>=0;i--){ctx.fillStyle=`rgba(0,${255-i*30},${255-i*30},${0.2-i*0.04})`;ctx.beginPath();ctx.arc(rx+15*renderScale,ry+18*renderScale,(20+i*8+Math.sin(t+i)*3)*renderScale,0,Math.PI*2);ctx.fill();}
+    for(let i=3;i>=0;i--){ctx.fillStyle=`rgba(0,${255-i*30},${255-i*30},${0.2-i*0.04})`;ctx.beginPath();ctx.arc(x+15,y+18,20+i*8+Math.sin(t+i)*3,0,Math.PI*2);ctx.fill();}
     const glow=Math.sin(t*2)*0.3+0.7;
-    ctx.fillStyle=`rgba(0,255,255,${glow})`;ctx.shadowColor='#00ffff';ctx.shadowBlur=15*renderScale;
+    ctx.fillStyle=`rgba(0,255,255,${glow})`;ctx.shadowColor='#00ffff';ctx.shadowBlur=15;
     ctx.beginPath();
-    ctx.moveTo((x+15)*renderScale,y*renderScale);
-    ctx.lineTo((x+30)*renderScale,(y+18)*renderScale);
-    ctx.lineTo((x+22)*renderScale,(y+18)*renderScale);
-    ctx.lineTo((x+22)*renderScale,(y+36)*renderScale);
-    ctx.lineTo((x+8)*renderScale,(y+36)*renderScale);
-    ctx.lineTo((x+8)*renderScale,(y+18)*renderScale);
-    ctx.lineTo(x*renderScale,(y+18)*renderScale);
+    ctx.moveTo(x+15,y);
+    ctx.lineTo(x+30,y+18);
+    ctx.lineTo(x+22,y+18);
+    ctx.lineTo(x+22,y+36);
+    ctx.lineTo(x+8,y+36);
+    ctx.lineTo(x+8,y+18);
+    ctx.lineTo(x,y+18);
     ctx.closePath();ctx.fill();
     ctx.shadowBlur=0;
 }
@@ -676,38 +675,37 @@ function drawExit(x,y) {
 function drawPlayer() {
     const px=player.x,py=player.y,f=player.facing;
     const bobY=player.onGround?Math.sin(player.runFrame)*2:0;
-    const s = renderScale;
     ctx.save();
-    ctx.translate((px+player.w/2)*s,(py+player.h/2)*s);
+    ctx.translate(px+player.w/2,py+player.h/2);
     if(player.dashing){ctx.globalAlpha=0.8;ctx.scale(1.5,0.7);}
-    ctx.translate(-(px+player.w/2)*s,-(py+player.h/2)*s);
+    ctx.translate(-(px+player.w/2),-(py+player.h/2));
     if(player.invincible>0&&Math.floor(player.invincible/3)%2===0) ctx.globalAlpha=0.5;
     
     // Shadow
-    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.beginPath();ctx.ellipse((px+player.w/2)*s,(py+player.h+2)*s,8*s,3*s,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.beginPath();ctx.ellipse(px+player.w/2,py+player.h+2,8,3,0,0,Math.PI*2);ctx.fill();
     
     // Cape
     const cw=Math.sin(gameTime*0.15)*3;
     ctx.fillStyle='#cc0000';ctx.beginPath();
-    ctx.moveTo((px+(f>0?2:14))*s,(py+6+bobY)*s);
-    ctx.quadraticCurveTo((px+(f>0?-8:24))*s,(py+12+cw+bobY)*s,(px+(f>0?-4:20))*s,(py+20+cw+bobY)*s);
-    ctx.lineTo((px+(f>0?2:14))*s,(py+18+bobY)*s);ctx.fill();
+    ctx.moveTo(px+(f>0?2:14),py+6+bobY);
+    ctx.quadraticCurveTo(px+(f>0?-8:24),py+12+cw+bobY,px+(f>0?-4:20),py+20+cw+bobY);
+    ctx.lineTo(px+(f>0?2:14),py+18+bobY);ctx.fill();
     
     // Body
-    ctx.fillStyle='#ff6688';ctx.fillRect((px+2)*s,(py+6+bobY)*s,12*s,10*s);
+    ctx.fillStyle='#ff6688';ctx.fillRect(px+2,py+6+bobY,12,10);
     // Head
-    ctx.fillStyle='#ffccbb';ctx.fillRect((px+2)*s,(py+bobY)*s,12*s,8*s);
+    ctx.fillStyle='#ffccbb';ctx.fillRect(px+2,py+bobY,12,8);
     // Hair
-    ctx.fillStyle='#553322';ctx.fillRect((px+2)*s,(py+bobY)*s,12*s,3*s);
+    ctx.fillStyle='#553322';ctx.fillRect(px+2,py+bobY,12,3);
     // Eye white
-    ctx.fillStyle='#fff';ctx.fillRect((px+(f>0?8:4))*s,(py+3+bobY)*s,5*s,4*s);
+    ctx.fillStyle='#fff';ctx.fillRect(px+(f>0?8:4),py+3+bobY,5,4);
     // Eye
-    ctx.fillStyle='#000';ctx.fillRect((px+(f>0?10:4))*s,(py+4+bobY)*s,2*s,2*s);
+    ctx.fillStyle='#000';ctx.fillRect(px+(f>0?10:4),py+4+bobY,2,2);
     // Legs
     const l1=player.onGround?Math.sin(player.runFrame)*3:2, l2=player.onGround?Math.sin(player.runFrame+Math.PI)*3:-2;
-    ctx.fillStyle='#4444ff';ctx.fillRect((px+3+l1)*s,(py+15+bobY)*s,4*s,5*s);ctx.fillRect((px+9+l2)*s,(py+15+bobY)*s,4*s,5*s);
+    ctx.fillStyle='#4444ff';ctx.fillRect(px+3+l1,py+15+bobY,4,5);ctx.fillRect(px+9+l2,py+15+bobY,4,5);
     // Gun
-    ctx.fillStyle='#666';ctx.fillRect((px+(f>0?12:-4))*s,(py+9+bobY)*s,8*s,4*s);
+    ctx.fillStyle='#666';ctx.fillRect(px+(f>0?12:-4),py+9+bobY,8,4);
     ctx.restore();
 }
 
@@ -716,81 +714,72 @@ function getDifficulty(lv) { let r=GAME_CONFIG.difficulties[0]; for(const d of G
 function drawHUD() {
     const lvl=levels[currentLevel]; if(!lvl) return;
     const diff=getDifficulty(currentLevel);
-    const s = renderScale;
-    const vw = getVW();
     
-    ctx.fillStyle='#ff4444';ctx.font=`bold ${16*s}px monospace`;ctx.fillText('☠',10*s,22*s);
-    ctx.fillStyle='#fff';ctx.fillText(` ${deathCount}`,28*s,22*s);
-    ctx.fillStyle='#aaa';ctx.font=`${12*s}px monospace`;ctx.fillText(`STAGE ${currentLevel+1}/${levels.length}`,10*s,42*s);
-    ctx.fillStyle=diff.color;ctx.font=`bold ${14*s}px monospace`;ctx.fillText(lvl.name,10*s,60*s);
+    ctx.fillStyle='#ff4444';ctx.font='bold 16px monospace';ctx.fillText('☠',10,22);
+    ctx.fillStyle='#fff';ctx.fillText(` ${deathCount}`,28,22);
+    ctx.fillStyle='#aaa';ctx.font='12px monospace';ctx.fillText(`STAGE ${currentLevel+1}/${levels.length}`,10,42);
+    ctx.fillStyle=diff.color;ctx.font='bold 14px monospace';ctx.fillText(lvl.name,10,60);
     
     // Dash gauge
-    const gaugeX = (vw - 70) * s;
-    ctx.fillStyle=player.dashCooldown>0?'#444':'#0ff';ctx.fillRect(gaugeX,10*s,50*s,8*s);
-    if(player.dashCooldown>0){ctx.fillStyle='#0ff';ctx.fillRect(gaugeX,10*s,50*(1-player.dashCooldown/45)*s,8*s);}
-    ctx.fillStyle='#888';ctx.font=`${10*s}px monospace`;ctx.fillText('DASH',gaugeX,30*s);
+    const gaugeX = GAME_WIDTH - 70;
+    ctx.fillStyle=player.dashCooldown>0?'#444':'#0ff';ctx.fillRect(gaugeX,10,50,8);
+    if(player.dashCooldown>0){ctx.fillStyle='#0ff';ctx.fillRect(gaugeX,10,50*(1-player.dashCooldown/45),8);}
+    ctx.fillStyle='#888';ctx.font='10px monospace';ctx.fillText('DASH',gaugeX,30);
     
     // Double jump
-    ctx.fillStyle=player.doubleJump?'#88ff88':'#444';ctx.fillRect(gaugeX,40*s,50*s,8*s);
-    ctx.fillStyle='#888';ctx.fillText('2JUMP',gaugeX,60*s);
+    ctx.fillStyle=player.doubleJump?'#88ff88':'#444';ctx.fillRect(gaugeX,40,50,8);
+    ctx.fillStyle='#888';ctx.fillText('2JUMP',gaugeX,60);
     
-    if(!isMobile){ctx.fillStyle='#666';ctx.font=`${10*s}px monospace`;ctx.fillText('ESC: Options',gaugeX,80*s);}
+    if(!isMobile){ctx.fillStyle='#666';ctx.font='10px monospace';ctx.fillText('ESC: Options',gaugeX,80);}
     
-    const vh = getVH();
     if(lvl.messages&&lvl.messages[0]){
-        ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,(vh-30)*s,canvas.width,30*s);
-        ctx.fillStyle='#fff';ctx.font=`${13*s}px monospace`;ctx.textAlign='center';
-        ctx.fillText(lvl.messages[0],(vw/2)*s,(vh-10)*s);ctx.textAlign='left';
+        ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,GAME_HEIGHT-30,GAME_WIDTH,30);
+        ctx.fillStyle='#fff';ctx.font='13px monospace';ctx.textAlign='center';
+        ctx.fillText(lvl.messages[0],GAME_WIDTH/2,GAME_HEIGHT-10);ctx.textAlign='left';
     }
 }
 
 function drawDeathScreen() {
-    const vw = getVW(), vh = getVH();
-    const s = renderScale;
-    ctx.fillStyle=`rgba(80,0,0,${Math.min(0.6,deathTimer/60)})`;ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle=`rgba(80,0,0,${Math.min(0.6,deathTimer/60)})`;ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);
     if(deathTimer>30){
-        ctx.save();ctx.translate((vw/2)*s,(vh/2-50)*s);ctx.rotate(Math.sin(gameTime*0.1)*0.02);
-        ctx.fillStyle='#ff0000';ctx.shadowColor='#ff0000';ctx.shadowBlur=30*s;ctx.font=`bold ${48*s}px monospace`;ctx.textAlign='center';ctx.fillText('GAME OVER',0,0);ctx.shadowBlur=0;ctx.restore();
-        ctx.fillStyle='#ffaaaa';ctx.font=`${20*s}px monospace`;ctx.textAlign='center';ctx.fillText(`Death Count: ${deathCount}`,(vw/2)*s,(vh/2+10)*s);
-        if(Math.floor(gameTime/30)%2===0){ctx.fillStyle='#fff';ctx.font=`${16*s}px monospace`;ctx.fillText(isMobile?'Tap to retry':'Press Z / Space / Enter to retry',(vw/2)*s,(vh/2+60)*s);}
-        ctx.fillStyle='#888';ctx.font=`${12*s}px monospace`;ctx.fillText(isMobile?'':'Press R to restart stage',(vw/2)*s,(vh/2+90)*s);ctx.textAlign='left';
+        ctx.save();ctx.translate(GAME_WIDTH/2,GAME_HEIGHT/2-50);ctx.rotate(Math.sin(gameTime*0.1)*0.02);
+        ctx.fillStyle='#ff0000';ctx.shadowColor='#ff0000';ctx.shadowBlur=30;ctx.font='bold 48px monospace';ctx.textAlign='center';ctx.fillText('GAME OVER',0,0);ctx.shadowBlur=0;ctx.restore();
+        ctx.fillStyle='#ffaaaa';ctx.font='20px monospace';ctx.textAlign='center';ctx.fillText(`Death Count: ${deathCount}`,GAME_WIDTH/2,GAME_HEIGHT/2+10);
+        if(Math.floor(gameTime/30)%2===0){ctx.fillStyle='#fff';ctx.font='16px monospace';ctx.fillText(isMobile?'Tap to retry':'Press Z / Space / Enter to retry',GAME_WIDTH/2,GAME_HEIGHT/2+60);}
+        ctx.fillStyle='#888';ctx.font='12px monospace';ctx.fillText(isMobile?'':'Press R to restart stage',GAME_WIDTH/2,GAME_HEIGHT/2+90);ctx.textAlign='left';
     }
 }
 
 function drawTitle() {
-    const vw = getVW(), vh = getVH();
-    const s = renderScale;
     const t=gameTime*0.02;
     
-    for(let i=0;i<30;i++){ctx.fillStyle=`rgba(255,0,0,${0.1+Math.sin(t+i)*0.05})`;ctx.beginPath();ctx.arc((Math.sin(t+i*0.5)*vw/2+vw/2)*s,(Math.cos(t*0.7+i*0.3)*vh/2+vh/2)*s,(3+Math.sin(t+i)*2)*s,0,Math.PI*2);ctx.fill();}
+    for(let i=0;i<30;i++){ctx.fillStyle=`rgba(255,0,0,${0.1+Math.sin(t+i)*0.05})`;ctx.beginPath();ctx.arc(Math.sin(t+i*0.5)*GAME_WIDTH/2+GAME_WIDTH/2,Math.cos(t*0.7+i*0.3)*GAME_HEIGHT/2+GAME_HEIGHT/2,3+Math.sin(t+i)*2,0,Math.PI*2);ctx.fill();}
     ctx.textAlign='center';
-    ctx.save();ctx.translate((vw/2)*s,(vh*0.2)*s);ctx.rotate(Math.sin(t*0.5)*0.02);
-    ctx.fillStyle='#ff0000';ctx.shadowColor='#ff0000';ctx.shadowBlur=30*s;ctx.font=`bold ${28*s}px monospace`;ctx.fillText(GAME_CONFIG.title,0,0);ctx.shadowBlur=0;ctx.restore();
-    ctx.fillStyle='#ff6666';ctx.font=`bold ${16*s}px monospace`;ctx.fillText(GAME_CONFIG.subtitle,(vw/2)*s,(vh*0.28)*s);
-    ctx.fillStyle='#888';ctx.font=`${12*s}px monospace`;ctx.fillText(`${levels.length} STAGES`,(vw/2)*s,(vh*0.35)*s);
-    if(Math.sin(t*4)>0){ctx.fillStyle='#fff';ctx.shadowColor='#fff';ctx.shadowBlur=10*s;ctx.font=`bold ${14*s}px monospace`;ctx.fillText(isMobile?'TAP TO START':'PRESS Z / SPACE / ENTER TO START',(vw/2)*s,(vh*0.52)*s);ctx.shadowBlur=0;}
-    ctx.fillStyle='#888';ctx.font=`${11*s}px monospace`;
-    if(isMobile) ctx.fillText('Stick: Move | JUMP | DASH',(vw/2)*s,(vh*0.68)*s);
-    else{ctx.fillText('Arrow Keys: Move | Z/Space/Up: Jump | X/Shift: Dash',(vw/2)*s,(vh*0.68)*s);ctx.fillText('R: Restart | Esc: Options',(vw/2)*s,(vh*0.73)*s);}
+    ctx.save();ctx.translate(GAME_WIDTH/2,GAME_HEIGHT*0.2);ctx.rotate(Math.sin(t*0.5)*0.02);
+    ctx.fillStyle='#ff0000';ctx.shadowColor='#ff0000';ctx.shadowBlur=30;ctx.font='bold 32px monospace';ctx.fillText(GAME_CONFIG.title,0,0);ctx.shadowBlur=0;ctx.restore();
+    ctx.fillStyle='#ff6666';ctx.font='bold 18px monospace';ctx.fillText(GAME_CONFIG.subtitle,GAME_WIDTH/2,GAME_HEIGHT*0.28);
+    ctx.fillStyle='#888';ctx.font='14px monospace';ctx.fillText(`${levels.length} STAGES`,GAME_WIDTH/2,GAME_HEIGHT*0.35);
+    if(Math.sin(t*4)>0){ctx.fillStyle='#fff';ctx.shadowColor='#fff';ctx.shadowBlur=10;ctx.font='bold 16px monospace';ctx.fillText(isMobile?'TAP TO START':'PRESS Z / SPACE / ENTER TO START',GAME_WIDTH/2,GAME_HEIGHT*0.52);ctx.shadowBlur=0;}
+    ctx.fillStyle='#888';ctx.font='12px monospace';
+    if(isMobile) ctx.fillText('Stick: Move | JUMP | DASH',GAME_WIDTH/2,GAME_HEIGHT*0.68);
+    else{ctx.fillText('Arrow Keys: Move | Z/Space/Up: Jump | X/Shift: Dash',GAME_WIDTH/2,GAME_HEIGHT*0.68);ctx.fillText('R: Restart | Esc: Options',GAME_WIDTH/2,GAME_HEIGHT*0.73);}
     ctx.textAlign='left';
 }
 
 function drawClear() {
-    const vw = getVW(), vh = getVH();
-    const s = renderScale;
     const t=gameTime*0.03;
-    for(let i=0;i<60;i++){ctx.fillStyle=`hsla(${(t*50+i*20)%360},100%,50%,0.15)`;ctx.beginPath();ctx.arc((Math.sin(t+i)*vw*0.47+vw/2)*s,(Math.cos(t*0.8+i*0.5)*vh*0.47+vh/2)*s,(6+Math.sin(t+i)*4)*s,0,Math.PI*2);ctx.fill();}
-    for(const p of particles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.beginPath();ctx.arc(p.x*s,p.y*s,p.size*s,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+    for(let i=0;i<60;i++){ctx.fillStyle=`hsla(${(t*50+i*20)%360},100%,50%,0.15)`;ctx.beginPath();ctx.arc(Math.sin(t+i)*GAME_WIDTH*0.47+GAME_WIDTH/2,Math.cos(t*0.8+i*0.5)*GAME_HEIGHT*0.47+GAME_HEIGHT/2,6+Math.sin(t+i)*4,0,Math.PI*2);ctx.fill();}
+    for(const p of particles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.min(1,p.life/30);ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
     ctx.textAlign='center';
-    ctx.save();ctx.translate((vw/2)*s,(vh*0.20)*s);ctx.scale(1+Math.sin(t*2)*0.05,1+Math.sin(t*2)*0.05);
-    ctx.fillStyle='#ffff00';ctx.shadowColor='#ffff00';ctx.shadowBlur=40*s;ctx.font=`bold ${32*s}px monospace`;ctx.fillText('CONGRATULATIONS!',0,0);ctx.shadowBlur=0;ctx.restore();
-    ctx.fillStyle='#fff';ctx.font=`bold ${22*s}px monospace`;ctx.fillText('YOU ARE THE GUY!',(vw/2)*s,(vh*0.32)*s);
-    ctx.fillStyle='#aaa';ctx.font=`${16*s}px monospace`;ctx.fillText(`Total Deaths: ${deathCount}`,(vw/2)*s,(vh*0.42)*s);
+    ctx.save();ctx.translate(GAME_WIDTH/2,GAME_HEIGHT*0.20);ctx.scale(1+Math.sin(t*2)*0.05,1+Math.sin(t*2)*0.05);
+    ctx.fillStyle='#ffff00';ctx.shadowColor='#ffff00';ctx.shadowBlur=40;ctx.font='bold 36px monospace';ctx.fillText('CONGRATULATIONS!',0,0);ctx.shadowBlur=0;ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 24px monospace';ctx.fillText('YOU ARE THE GUY!',GAME_WIDTH/2,GAME_HEIGHT*0.32);
+    ctx.fillStyle='#aaa';ctx.font='18px monospace';ctx.fillText(`Total Deaths: ${deathCount}`,GAME_WIDTH/2,GAME_HEIGHT*0.42);
     let rank=GAME_CONFIG.ranks[GAME_CONFIG.ranks.length-1];
     for(const r of GAME_CONFIG.ranks){if(deathCount<=r.maxDeaths){rank=r;break;}}
-    ctx.fillStyle=rank.color;ctx.shadowColor=rank.color;ctx.shadowBlur=20*s;ctx.font=`bold ${18*s}px monospace`;ctx.fillText(`Rank: ${rank.name}`,(vw/2)*s,(vh*0.52)*s);ctx.shadowBlur=0;
-    ctx.fillStyle='#888';ctx.font=`${12*s}px monospace`;ctx.fillText(`You conquered all ${levels.length} stages!`,(vw/2)*s,(vh*0.62)*s);
-    if(clearTimer>60&&Math.sin(t*4)>0){ctx.fillStyle='#fff';ctx.font=`${14*s}px monospace`;ctx.fillText(isMobile?'Tap for Title':'Press Z / Space / Enter for Title',(vw/2)*s,(vh*0.75)*s);}
+    ctx.fillStyle=rank.color;ctx.shadowColor=rank.color;ctx.shadowBlur=20;ctx.font='bold 20px monospace';ctx.fillText(`Rank: ${rank.name}`,GAME_WIDTH/2,GAME_HEIGHT*0.52);ctx.shadowBlur=0;
+    ctx.fillStyle='#888';ctx.font='14px monospace';ctx.fillText(`You conquered all ${levels.length} stages!`,GAME_WIDTH/2,GAME_HEIGHT*0.62);
+    if(clearTimer>60&&Math.sin(t*4)>0){ctx.fillStyle='#fff';ctx.font='16px monospace';ctx.fillText(isMobile?'Tap for Title':'Press Z / Space / Enter for Title',GAME_WIDTH/2,GAME_HEIGHT*0.75);}
     ctx.textAlign='left';
 }
 
@@ -815,7 +804,6 @@ function init() {
     gameLoop();
 }
 
-// DOM準備完了後に初期化
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {

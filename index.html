@@ -40,7 +40,7 @@ body {
     background: #0a0a1a;
 }
 #controlsArea {
-    flex: 0 0 200px;
+    flex: 0 0 260px;
     position: relative;
     background: rgba(20, 20, 30, 0.95);
     padding-top: 5px;
@@ -207,7 +207,6 @@ window.addEventListener('resize', () => {
     resizeTimeout = setTimeout(resizeCanvas, 50);
 });
 
-// --- Save Data ---
 let saveData = {
     clearedStages: [],
     bestDeaths: {},
@@ -226,7 +225,6 @@ function saveSaveData() {
     localStorage.setItem('iwbtg_savedata', JSON.stringify(saveData));
 }
 
-// --- Key Bindings ---
 const defaultKeyBindings = {
     left:'ArrowLeft', right:'ArrowRight',
     jump:'Space', dash:'KeyX', restart:'KeyR'
@@ -247,7 +245,6 @@ function updateKeyButtons() {
 }
 function formatKeyName(c) { return c.replace('Key','').replace('Arrow','').replace('Shift','Shift ').replace('Left','L').replace('Right','R'); }
 
-// --- Options ---
 let listeningButton = null;
 let previousGameState = 'title';
 
@@ -283,7 +280,6 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// --- Touch ---
 const touchState = { stick:{ active:false, id:null, x:0, y:0, dx:0, dy:0 }, jump:false, dash:false };
 const stickConfig = { x:100, y:0, baseRadius:65, stickRadius:40, maxDist:50 };
 const buttonConfig = {
@@ -298,8 +294,8 @@ function updateButtonPositions() {
     const ctrlH = controlsArea.clientHeight;
     const ctrlDpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
     
-    // コントローラーエリアの中央付近に配置
-    const centerY = ctrlH * 0.45;
+    // コントローラーエリアの上部に配置（上から約35%の位置）
+    const centerY = ctrlH * 0.35;
     
     touchButtonPositions.stick.x = Math.max(100, Math.min(130, ctrlW * 0.18));
     touchButtonPositions.stick.y = centerY;
@@ -456,7 +452,6 @@ function drawTouchButton(cfg, pressed, dpr) {
 function lightenColor(c,p){const n=parseInt(c.replace('#',''),16),a=Math.round(2.55*p);return '#'+(0x1000000+Math.min(255,(n>>16)+a)*0x10000+Math.min(255,((n>>8)&0xFF)+a)*0x100+Math.min(255,(n&0xFF)+a)).toString(16).slice(1);}
 function darkenColor(c,p){const n=parseInt(c.replace('#',''),16),a=Math.round(2.55*p);return '#'+(0x1000000+Math.max(0,(n>>16)-a)*0x10000+Math.max(0,((n>>8)&0xFF)-a)*0x100+Math.max(0,(n&0xFF)-a)).toString(16).slice(1);}
 
-// --- Game State ---
 let gameState = 'title';
 let deathCount = 0;
 let currentLevel = 0;
@@ -506,7 +501,6 @@ let keysPressed = {};
 let prevTouchJump = false;
 let prevTouchDash = false;
 
-// --- Input ---
 document.addEventListener('keydown', e => {
     if (listeningButton) return;
     if (!keys[e.code]) keysPressed[e.code] = true;
@@ -739,9 +733,6 @@ function isActionJustPressed(a) {
 }
 function clearKeysPressed() { keysPressed = {}; }
 
-// ============================================================
-//  STAGE DATA (20ステージ分の枠)
-// ============================================================
 const levels = [];
 for (let i = 0; i < TOTAL_STAGES; i++) {
     levels.push({
@@ -759,9 +750,6 @@ for (let i = 0; i < TOTAL_STAGES; i++) {
     });
 }
 
-// ============================================================
-//  CONFIG
-// ============================================================
 const GAME_CONFIG = {
     title: "I WANNA BE THE GUY",
     subtitle: "CUSTOM EDITION",
@@ -778,9 +766,6 @@ const GAME_CONFIG = {
     ],
 };
 
-// ============================================================
-//  LEVEL RESET
-// ============================================================
 function resetLevel() {
     const lvl = levels[currentLevel]; if (!lvl) return;
     player.x = lvl.spawnX; player.y = lvl.spawnY;
@@ -793,16 +778,12 @@ function resetLevel() {
     keysPressed = {}; prevTouchJump = false; prevTouchDash = false;
 }
 
-// ============================================================
-//  EFFECTS
-// ============================================================
 function createTextParticle(x, y, text, color = '#fff') { textParticles.push({ x, y, text, color, vy: -2, life: 60, size: 16 }); }
 
 function killPlayer() {
     if (player.dead || player.invincible > 0) return;
     player.dead = true; deathCount++; deathTimer = 0;
     gameState = 'dead'; slowMotion = 0.3;
-    // 画面揺れを無効化
     screenShake = 0;
     for (let i = 0; i < 60; i++) {
         const a = Math.random() * Math.PI * 2, s = Math.random() * 15 + 3;
@@ -812,14 +793,8 @@ function killPlayer() {
     createTextParticle(player.x, player.y - 20, 'DEAD!', '#ff0000');
 }
 
-// ============================================================
-//  COLLISION
-// ============================================================
 function rectCollision(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
-// ============================================================
-//  UPDATE
-// ============================================================
 function update() {
     gameTime++;
     if (slowMotion < 1) slowMotion = Math.min(1, slowMotion + 0.02);
@@ -921,15 +896,11 @@ function updateParticles() {
     for (const s of backgroundStars) { s.twinkle += 0.05; s.y += s.speed; if (s.y > GAME_HEIGHT) { s.y = 0; s.x = Math.random() * GAME_WIDTH; } }
 }
 
-// ============================================================
-//  DRAW
-// ============================================================
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.scale(scaleX, scaleY);
     
-    // 画面揺れ（ゲームオーバー時は無効）
     if (screenShake > 0.5 && gameState !== 'dead') {
         ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) * screenShake * 2);
     }
@@ -1178,9 +1149,6 @@ function drawClear() {
     ctx.textAlign = 'left';
 }
 
-// ============================================================
-//  GAME LOOP
-// ============================================================
 function gameLoop() {
     gameSpeedAccum += GAME_SPEED;
     while (gameSpeedAccum >= 1.0) { update(); gameSpeedAccum -= 1.0; }
